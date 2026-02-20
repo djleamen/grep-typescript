@@ -60,6 +60,8 @@ function matchToken(char: string, token: string): boolean {
            (char >= 'A' && char <= 'Z') ||
            (char >= '0' && char <= '9') ||
            char === '_';
+  } else if (token === '.') {
+    return true;
   } else if (token.startsWith('[') && token.endsWith(']')) {
     const innerPattern = token.slice(1, -1);
     if (innerPattern.startsWith('^')) {
