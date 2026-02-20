@@ -10,34 +10,47 @@ const inputLine: string = await Bun.stdin.text();
 
 /**
  * Tokenize a pattern into individual components.
+ * @param pattern The pattern to tokenize.
+ * @returns An array of tokens extracted from the pattern.
  */
 function tokenizePattern(pattern: string): string[] {
   const tokens: string[] = [];
   let i = 0;
   
   while (i < pattern.length) {
+    let token = '';
+    
     if (pattern[i] === '\\' && i + 1 < pattern.length) {
-      tokens.push(pattern.slice(i, i + 2));
+      token = pattern.slice(i, i + 2);
       i += 2;
     } else if (pattern[i] === '[') {
       const end = pattern.indexOf(']', i);
       if (end !== -1) {
-        tokens.push(pattern.slice(i, end + 1));
+        token = pattern.slice(i, end + 1);
         i = end + 1;
       } else {
-        tokens.push(pattern[i]);
+        token = pattern[i];
         i++;
       }
     } else {
-      tokens.push(pattern[i]);
+      token = pattern[i];
       i++;
     }
+
+    if (i < pattern.length && pattern[i] === '+') {
+      token += '+';
+      i++;
+    }
+    tokens.push(token);
   }
   return tokens;
 }
 
 /**
  * Check if a single character matches a single token.
+ * @param char The character to match.
+ * @param token The token to match against.
+ * @returns True if the character matches the token, false otherwise.
  */
 function matchToken(char: string, token: string): boolean {
   if (token === '\\d') {
@@ -62,22 +75,48 @@ function matchToken(char: string, token: string): boolean {
 
 /**
  * Try to match a sequence of tokens starting from a specific position in the input.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param startPos The starting position in the input string.
+ * @returns True if the sequence of tokens matches starting from the given position, false otherwise.
  */
 function matchTokensAt(input: string, tokens: string[], startPos: number): boolean {
   let inputPos = startPos;
   
-  for (const token of tokens) {
-    if (inputPos >= input.length) {
-      return false;
+  for (let tokenIdx = 0; tokenIdx < tokens.length; tokenIdx++) {
+    const token = tokens[tokenIdx];
+    
+    if (token.endsWith('+')) {
+      const baseToken = token.slice(0, -1);
+      let matchCount = 0;
+      
+      while (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+        matchCount++;
+        inputPos++;
+      }
+      
+      if (matchCount === 0) {
+        return false;
+      }
+    } else {
+      if (inputPos >= input.length) {
+        return false;
+      }
+      if (!matchToken(input[inputPos], token)) {
+        return false;
+      }
+      inputPos++;
     }
-    if (!matchToken(input[inputPos], token)) {
-      return false;
-    }
-    inputPos++;
   }
   return true;
 }
 
+/**
+ * Match the input line against the pattern, considering anchors and quantifiers.
+ * @param inputLine The line of input to match against the pattern.
+ * @param pattern The pattern to match against the input line.
+ * @returns True if the input line matches the pattern, false otherwise.
+ */
 function matchPattern(inputLine: string, pattern: string): boolean {
   const hasStartAnchor = pattern.startsWith('^');
   const hasEndAnchor = pattern.endsWith('$');
