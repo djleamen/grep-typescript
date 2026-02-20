@@ -32,6 +32,21 @@ function tokenizePattern(pattern: string): string[] {
         token = pattern[i];
         i++;
       }
+    } else if (pattern[i] === '(') {
+      let depth = 1;
+      let end = i + 1;
+      while (end < pattern.length && depth > 0) {
+        if (pattern[end] === '(') depth++;
+        else if (pattern[end] === ')') depth--;
+        end++;
+      }
+      if (depth === 0) {
+        token = pattern.slice(i, end);
+        i = end;
+      } else {
+        token = pattern[i];
+        i++;
+      }
     } else {
       token = pattern[i];
       i++;
@@ -101,7 +116,23 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
   
   const token = tokens[tokenIdx];
   
-  if (token.endsWith('+')) {
+  if (token.startsWith('(') && token.endsWith(')')) {
+    const innerContent = token.slice(1, -1);
+    const alternatives = splitAlternatives(innerContent);
+    
+    for (const alternative of alternatives) {
+      const altTokens = tokenizePattern(alternative);
+      const charsConsumed = matchAlternative(input, altTokens, inputPos);
+      if (charsConsumed !== -1) {
+        if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + charsConsumed)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  
+  if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     let matchCount = 0;
     
@@ -120,17 +151,15 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
     }
     
     return false;
-  } else if (token.endsWith('?')) {
+  } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     
-    // Try matching once first
-    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+=    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
       if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + 1)) {
         return true;
       }
     }
     
-    // Try matching zero times (skip this token)
     return matchTokensHelper(input, tokens, tokenIdx + 1, inputPos);
   } else {
     if (inputPos >= input.length) {
@@ -140,6 +169,92 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
       return false;
     }
     return matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + 1);
+  }
+}
+
+/**
+ * Split a pattern by | operator, respecting nested groups.
+ */
+function splitAlternatives(pattern: string): string[] {
+  const alternatives: string[] = [];
+  let current = '';
+  let depth = 0;
+  
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === '(') {
+      depth++;
+      current += pattern[i];
+    } else if (pattern[i] === ')') {
+      depth--;
+      current += pattern[i];
+    } else if (pattern[i] === '|' && depth === 0) {
+      alternatives.push(current);
+      current = '';
+    } else {
+      current += pattern[i];
+    }
+  }
+  alternatives.push(current);
+  return alternatives;
+}
+
+/**
+ * Check if an alternative matches starting at the given position.
+ * Returns the number of characters consumed, or -1 if no match.
+ */
+function matchAlternative(input: string, altTokens: string[], startPos: number): number {
+  return matchAlternativeHelper(input, altTokens, 0, startPos, startPos);
+}
+
+/**
+ * Helper to match an alternative and track chars consumed.
+ */
+function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: number, startPos: number, inputPos: number): number {
+  if (tokenIdx >= tokens.length) {
+    return inputPos - startPos;
+  }
+  
+  const token = tokens[tokenIdx];
+  
+  if (token.endsWith('+') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+    
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+    
+    if (matchCount === 0) {
+      return -1;
+    }
+    
+    for (let count = matchCount; count >= 1; count--) {
+      const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, inputPos + count);
+      if (result !== -1) {
+        return result;
+      }
+    }
+    
+    return -1;
+  } else if (token.endsWith('?') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    
+    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+      const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, inputPos + 1);
+      if (result !== -1) {
+        return result;
+      }
+    }
+    
+    return matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, inputPos);
+  } else {
+    if (inputPos >= input.length) {
+      return -1;
+    }
+    if (!matchToken(input[inputPos], token)) {
+      return -1;
+    }
+    return matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, inputPos + 1);
   }
 }
 
@@ -211,7 +326,23 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
   
   const token = tokens[tokenIdx];
   
-  if (token.endsWith('+')) {
+  if (token.startsWith('(') && token.endsWith(')')) {
+    const innerContent = token.slice(1, -1);
+    const alternatives = splitAlternatives(innerContent);
+    
+    for (const alternative of alternatives) {
+      const altTokens = tokenizePattern(alternative);
+      const charsConsumed = matchAlternative(input, altTokens, inputPos);
+      if (charsConsumed !== -1) {
+        if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + charsConsumed)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  
+  if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     let matchCount = 0;
     
@@ -228,19 +359,15 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
         return true;
       }
     }
-    
     return false;
-  } else if (token.endsWith('?')) {
+  } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     
-    // Try matching once first
     if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
       if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + 1)) {
         return true;
       }
     }
-    
-    // Try matching zero times (skip this token)
     return matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos);
   } else {
     if (inputPos >= input.length) {
