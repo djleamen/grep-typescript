@@ -16,6 +16,16 @@ function matchPattern(inputLine: string, pattern: string): boolean {
       }
     }
     return false;
+  } else if (pattern === "\\w") {
+    for (const char of inputLine) {
+      if ((char >= 'a' && char <= 'z') ||
+          (char >= 'A' && char <= 'Z') ||
+          (char >= '0' && char <= '9') ||
+          char === '_') {
+        return true;
+      }
+    }
+    return false;
   } else if (pattern.length === 1) {
     return inputLine.includes(pattern);
   } else {
