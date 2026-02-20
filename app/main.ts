@@ -154,7 +154,7 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
   } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     
-=    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
       if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + 1)) {
         return true;
       }
