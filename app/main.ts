@@ -79,12 +79,27 @@ function matchTokensAt(input: string, tokens: string[], startPos: number): boole
 }
 
 function matchPattern(inputLine: string, pattern: string): boolean {
-  if (pattern.startsWith('^')) {
-    const tokens = tokenizePattern(pattern.slice(1));
+  const hasStartAnchor = pattern.startsWith('^');
+  const hasEndAnchor = pattern.endsWith('$');
+  
+  let cleanPattern = pattern;
+  if (hasStartAnchor) {
+    cleanPattern = cleanPattern.slice(1);
+  }
+  if (hasEndAnchor) {
+    cleanPattern = cleanPattern.slice(0, -1);
+  }
+  
+  const tokens = tokenizePattern(cleanPattern);
+  
+  if (hasStartAnchor && hasEndAnchor) {
+    return tokens.length === inputLine.length && matchTokensAt(inputLine, tokens, 0);
+  } else if (hasStartAnchor) {
     return matchTokensAt(inputLine, tokens, 0);
+  } else if (hasEndAnchor) {
+    const startPos = inputLine.length - tokens.length;
+    return startPos >= 0 && matchTokensAt(inputLine, tokens, startPos);
   } else {
-    const tokens = tokenizePattern(pattern);
-    
     for (let i = 0; i <= inputLine.length - tokens.length; i++) {
       if (matchTokensAt(inputLine, tokens, i)) {
         return true;
