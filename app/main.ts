@@ -37,8 +37,8 @@ function tokenizePattern(pattern: string): string[] {
       i++;
     }
 
-    if (i < pattern.length && pattern[i] === '+') {
-      token += '+';
+    if (i < pattern.length && (pattern[i] === '+' || pattern[i] === '?')) {
+      token += pattern[i];
       i++;
     }
     tokens.push(token);
@@ -118,6 +118,18 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
     }
     
     return false;
+  } else if (token.endsWith('?')) {
+    const baseToken = token.slice(0, -1);
+    
+    // Try matching once first
+    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+      if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + 1)) {
+        return true;
+      }
+    }
+    
+    // Try matching zero times (skip this token)
+    return matchTokensHelper(input, tokens, tokenIdx + 1, inputPos);
   } else {
     if (inputPos >= input.length) {
       return false;
@@ -216,6 +228,18 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
     }
     
     return false;
+  } else if (token.endsWith('?')) {
+    const baseToken = token.slice(0, -1);
+    
+    // Try matching once first
+    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+      if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + 1)) {
+        return true;
+      }
+    }
+    
+    // Try matching zero times (skip this token)
+    return matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos);
   } else {
     if (inputPos >= input.length) {
       return false;
