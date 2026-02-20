@@ -27,13 +27,24 @@ function matchPattern(inputLine: string, pattern: string): boolean {
     }
     return false;
   } else if (pattern.startsWith('[') && pattern.endsWith(']')) {
-    const chars = pattern.slice(1, -1);
-    for (const inputChar of inputLine) {
-      if (chars.includes(inputChar)) {
-        return true;
+    const innerPattern = pattern.slice(1, -1);
+    
+    if (innerPattern.startsWith('^')) {
+      const chars = innerPattern.slice(1);
+      for (const inputChar of inputLine) {
+        if (!chars.includes(inputChar)) {
+          return true;
+        }
       }
+      return false;
+    } else {
+      for (const inputChar of inputLine) {
+        if (innerPattern.includes(inputChar)) {
+          return true;
+        }
+      }
+      return false;
     }
-    return false;
   } else if (pattern.length === 1) {
     return inputLine.includes(pattern);
   } else {
