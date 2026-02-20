@@ -79,14 +79,19 @@ function matchTokensAt(input: string, tokens: string[], startPos: number): boole
 }
 
 function matchPattern(inputLine: string, pattern: string): boolean {
-  const tokens = tokenizePattern(pattern);
-  
-  for (let i = 0; i <= inputLine.length - tokens.length; i++) {
-    if (matchTokensAt(inputLine, tokens, i)) {
-      return true;
+  if (pattern.startsWith('^')) {
+    const tokens = tokenizePattern(pattern.slice(1));
+    return matchTokensAt(inputLine, tokens, 0);
+  } else {
+    const tokens = tokenizePattern(pattern);
+    
+    for (let i = 0; i <= inputLine.length - tokens.length; i++) {
+      if (matchTokensAt(inputLine, tokens, i)) {
+        return true;
+      }
     }
+    return false;
   }
-  return false;
 }
 
 if (args[2] !== "-E") {
