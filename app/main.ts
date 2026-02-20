@@ -81,34 +81,52 @@ function matchToken(char: string, token: string): boolean {
  * @returns True if the sequence of tokens matches starting from the given position, false otherwise.
  */
 function matchTokensAt(input: string, tokens: string[], startPos: number): boolean {
-  let inputPos = startPos;
-  
-  for (let tokenIdx = 0; tokenIdx < tokens.length; tokenIdx++) {
-    const token = tokens[tokenIdx];
-    
-    if (token.endsWith('+')) {
-      const baseToken = token.slice(0, -1);
-      let matchCount = 0;
-      
-      while (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
-        matchCount++;
-        inputPos++;
-      }
-      
-      if (matchCount === 0) {
-        return false;
-      }
-    } else {
-      if (inputPos >= input.length) {
-        return false;
-      }
-      if (!matchToken(input[inputPos], token)) {
-        return false;
-      }
-      inputPos++;
-    }
+  return matchTokensHelper(input, tokens, 0, startPos);
+}
+
+/**
+ * Helper function to recursively match tokens with backtracking support.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param tokenIdx The current index in the tokens array.
+ * @param inputPos The current position in the input string.
+ * @returns True if the tokens match starting from the given position, false otherwise.
+ */
+function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, inputPos: number): boolean {
+  if (tokenIdx >= tokens.length) {
+    return true;
   }
-  return true;
+  
+  const token = tokens[tokenIdx];
+  
+  if (token.endsWith('+')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+    
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+    
+    if (matchCount === 0) {
+      return false;
+    }
+    
+    for (let count = matchCount; count >= 1; count--) {
+      if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + count)) {
+        return true;
+      }
+    }
+    
+    return false;
+  } else {
+    if (inputPos >= input.length) {
+      return false;
+    }
+    if (!matchToken(input[inputPos], token)) {
+      return false;
+    }
+    return matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + 1);
+  }
 }
 
 /**
@@ -132,19 +150,80 @@ function matchPattern(inputLine: string, pattern: string): boolean {
   const tokens = tokenizePattern(cleanPattern);
   
   if (hasStartAnchor && hasEndAnchor) {
-    return tokens.length === inputLine.length && matchTokensAt(inputLine, tokens, 0);
+    return matchTokensAtEnd(inputLine, tokens, 0);
   } else if (hasStartAnchor) {
     return matchTokensAt(inputLine, tokens, 0);
   } else if (hasEndAnchor) {
-    const startPos = inputLine.length - tokens.length;
-    return startPos >= 0 && matchTokensAt(inputLine, tokens, startPos);
+    for (let i = 0; i < inputLine.length; i++) {
+      if (matchTokensAtEnd(inputLine, tokens, i)) {
+        return true;
+      }
+    }
+    return false;
   } else {
-    for (let i = 0; i <= inputLine.length - tokens.length; i++) {
+    for (let i = 0; i < inputLine.length; i++) {
       if (matchTokensAt(inputLine, tokens, i)) {
         return true;
       }
     }
     return false;
+  }
+}
+
+/**
+ * Check if tokens match starting from startPos and end exactly at the end of input.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param startPos The starting position in the input string.
+ * @returns True if the tokens match and end at the end of the input, false otherwise.
+ */
+function matchTokensAtEnd(input: string, tokens: string[], startPos: number): boolean {
+  return matchTokensHelperEnd(input, tokens, 0, startPos);
+}
+
+/**
+ * Recursive helper function to match tokens with backtracking support, 
+ * ensuring the match ends at the end of the input.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param tokenIdx The current index in the tokens array.
+ * @param inputPos The current position in the input string.
+ * @returns True if the tokens match and reach the end of the input, false otherwise.
+ */
+function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number, inputPos: number): boolean {
+  if (tokenIdx >= tokens.length) {
+    return inputPos === input.length;
+  }
+  
+  const token = tokens[tokenIdx];
+  
+  if (token.endsWith('+')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+    
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+    
+    if (matchCount === 0) {
+      return false;
+    }
+    
+    for (let count = matchCount; count >= 1; count--) {
+      if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + count)) {
+        return true;
+      }
+    }
+    
+    return false;
+  } else {
+    if (inputPos >= input.length) {
+      return false;
+    }
+    if (!matchToken(input[inputPos], token)) {
+      return false;
+    }
+    return matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + 1);
   }
 }
 
