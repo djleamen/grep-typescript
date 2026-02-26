@@ -385,9 +385,18 @@ if (args[2] !== "-E") {
   process.exit(1);
 }
 
-if (matchPattern(inputLine, pattern)) {
-  process.stdout.write(inputLine + (inputLine.endsWith("\n") ? "" : "\n"));
-  process.exit(0);
-} else {
-  process.exit(1);
+const lines = inputLine.split("\n");
+// Remove trailing empty string caused by a trailing newline
+if (lines.length > 0 && lines[lines.length - 1] === "") {
+  lines.pop();
 }
+
+let anyMatch = false;
+for (const line of lines) {
+  if (matchPattern(line, pattern)) {
+    process.stdout.write(line + "\n");
+    anyMatch = true;
+  }
+}
+
+process.exit(anyMatch ? 0 : 1);
