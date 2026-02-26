@@ -386,6 +386,7 @@ if (args[2] !== "-E") {
 }
 
 if (matchPattern(inputLine, pattern)) {
+  process.stdout.write(inputLine + (inputLine.endsWith("\n") ? "" : "\n"));
   process.exit(0);
 } else {
   process.exit(1);
