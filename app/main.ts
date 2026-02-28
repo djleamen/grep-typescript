@@ -447,12 +447,13 @@ function matchPattern(inputLine: string, pattern: string): boolean {
 }
 
 /**
- * Find the first matching text in an input line.
+ * Find the next matching text in an input line, starting from a given index.
  * @param inputLine The line of input to search.
  * @param pattern The pattern to match.
- * @returns The first matched substring, or null if no match.
+ * @param searchFrom The index from which to start searching.
+ * @returns The start index and length of the match, or null if no match.
  */
-function findFirstMatchText(inputLine: string, pattern: string): string | null {
+function findNextMatch(inputLine: string, pattern: string, searchFrom: number): { start: number; length: number } | null {
   const hasStartAnchor = pattern.startsWith('^');
   const hasEndAnchor = pattern.endsWith('$');
 
@@ -467,39 +468,73 @@ function findFirstMatchText(inputLine: string, pattern: string): string | null {
   const tokens = tokenizePattern(cleanPattern);
 
   if (hasStartAnchor && hasEndAnchor) {
+    if (searchFrom > 0) {
+      return null;
+    }
     const matchLength = matchTokensLengthAtEnd(inputLine, tokens, 0);
     if (matchLength !== -1) {
-      return inputLine.slice(0, matchLength);
+      return { start: 0, length: matchLength };
     }
     return null;
   }
 
   if (hasStartAnchor) {
+    if (searchFrom > 0) {
+      return null;
+    }
     const matchLength = matchTokensLengthAt(inputLine, tokens, 0);
     if (matchLength !== -1) {
-      return inputLine.slice(0, matchLength);
+      return { start: 0, length: matchLength };
     }
     return null;
   }
 
   if (hasEndAnchor) {
-    for (let i = 0; i < inputLine.length; i++) {
+    for (let i = searchFrom; i < inputLine.length; i++) {
       const matchLength = matchTokensLengthAtEnd(inputLine, tokens, i);
       if (matchLength !== -1) {
-        return inputLine.slice(i, i + matchLength);
+        return { start: i, length: matchLength };
       }
     }
     return null;
   }
 
-  for (let i = 0; i < inputLine.length; i++) {
+  for (let i = searchFrom; i < inputLine.length; i++) {
     const matchLength = matchTokensLengthAt(inputLine, tokens, i);
     if (matchLength !== -1) {
-      return inputLine.slice(i, i + matchLength);
+      return { start: i, length: matchLength };
     }
   }
 
   return null;
+}
+
+/**
+ * Find all non-overlapping matching texts in an input line.
+ * @param inputLine The line of input to search.
+ * @param pattern The pattern to match.
+ * @returns All matched substrings in left-to-right order.
+ */
+function findAllMatchesText(inputLine: string, pattern: string): string[] {
+  const matches: string[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom <= inputLine.length) {
+    const next = findNextMatch(inputLine, pattern, searchFrom);
+    if (next === null) {
+      break;
+    }
+
+    matches.push(inputLine.slice(next.start, next.start + next.length));
+
+    if (next.length === 0) {
+      searchFrom = next.start + 1;
+    } else {
+      searchFrom = next.start + next.length;
+    }
+  }
+
+  return matches;
 }
 
 /**
@@ -592,8 +627,8 @@ if (lines.length > 0 && lines[lines.length - 1] === "") {
 let anyMatch = false;
 for (const line of lines) {
   if (onlyMatching) {
-    const matchedText = findFirstMatchText(line, pattern);
-    if (matchedText !== null) {
+    const matchedTexts = findAllMatchesText(line, pattern);
+    for (const matchedText of matchedTexts) {
       process.stdout.write(matchedText + "\n");
       anyMatch = true;
     }
