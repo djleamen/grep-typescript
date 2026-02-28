@@ -4,7 +4,17 @@
  */
 
 const args = process.argv;
-const pattern = args[3];
+
+const cliArgs = args.slice(2);
+const onlyMatching = cliArgs.includes("-o");
+const extendedFlagIndex = cliArgs.indexOf("-E");
+
+if (extendedFlagIndex === -1 || extendedFlagIndex === cliArgs.length - 1) {
+  console.log("Expected arguments to include '-E <pattern>'");
+  process.exit(1);
+}
+
+const pattern = cliArgs[extendedFlagIndex + 1];
 
 const inputLine: string = await Bun.stdin.text();
 
@@ -99,6 +109,143 @@ function matchToken(char: string, token: string): boolean {
  */
 function matchTokensAt(input: string, tokens: string[], startPos: number): boolean {
   return matchTokensHelper(input, tokens, 0, startPos);
+}
+
+/**
+ * Try to match a sequence of tokens starting from a specific position in the input.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param startPos The starting position in the input string.
+ * @returns Number of consumed characters if matched, otherwise -1.
+ */
+function matchTokensLengthAt(input: string, tokens: string[], startPos: number): number {
+  return matchTokensLengthHelper(input, tokens, 0, startPos, startPos, false);
+}
+
+/**
+ * Try to match a sequence of tokens starting from a specific position and ending at input end.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param startPos The starting position in the input string.
+ * @returns Number of consumed characters if matched and ended at input end, otherwise -1.
+ */
+function matchTokensLengthAtEnd(input: string, tokens: string[], startPos: number): number {
+  return matchTokensLengthHelper(input, tokens, 0, startPos, startPos, true);
+}
+
+/**
+ * Helper function to recursively match tokens and return consumed length.
+ */
+function matchTokensLengthHelper(
+  input: string,
+  tokens: string[],
+  tokenIdx: number,
+  inputPos: number,
+  startPos: number,
+  mustEndAtInputEnd: boolean,
+): number {
+  if (tokenIdx >= tokens.length) {
+    if (mustEndAtInputEnd && inputPos !== input.length) {
+      return -1;
+    }
+    return inputPos - startPos;
+  }
+
+  const token = tokens[tokenIdx];
+
+  if (token.startsWith('(') && token.endsWith(')')) {
+    const innerContent = token.slice(1, -1);
+    const alternatives = splitAlternatives(innerContent);
+
+    for (const alternative of alternatives) {
+      const altTokens = tokenizePattern(alternative);
+      const charsConsumed = matchAlternative(input, altTokens, inputPos);
+      if (charsConsumed !== -1) {
+        const result = matchTokensLengthHelper(
+          input,
+          tokens,
+          tokenIdx + 1,
+          inputPos + charsConsumed,
+          startPos,
+          mustEndAtInputEnd,
+        );
+        if (result !== -1) {
+          return result;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  if (token.endsWith('+') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+
+    if (matchCount === 0) {
+      return -1;
+    }
+
+    for (let count = matchCount; count >= 1; count--) {
+      const result = matchTokensLengthHelper(
+        input,
+        tokens,
+        tokenIdx + 1,
+        inputPos + count,
+        startPos,
+        mustEndAtInputEnd,
+      );
+      if (result !== -1) {
+        return result;
+      }
+    }
+
+    return -1;
+  } else if (token.endsWith('?') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+
+    if (inputPos < input.length && matchToken(input[inputPos], baseToken)) {
+      const result = matchTokensLengthHelper(
+        input,
+        tokens,
+        tokenIdx + 1,
+        inputPos + 1,
+        startPos,
+        mustEndAtInputEnd,
+      );
+      if (result !== -1) {
+        return result;
+      }
+    }
+
+    return matchTokensLengthHelper(
+      input,
+      tokens,
+      tokenIdx + 1,
+      inputPos,
+      startPos,
+      mustEndAtInputEnd,
+    );
+  } else {
+    if (inputPos >= input.length) {
+      return -1;
+    }
+    if (!matchToken(input[inputPos], token)) {
+      return -1;
+    }
+    return matchTokensLengthHelper(
+      input,
+      tokens,
+      tokenIdx + 1,
+      inputPos + 1,
+      startPos,
+      mustEndAtInputEnd,
+    );
+  }
 }
 
 /**
@@ -300,6 +447,62 @@ function matchPattern(inputLine: string, pattern: string): boolean {
 }
 
 /**
+ * Find the first matching text in an input line.
+ * @param inputLine The line of input to search.
+ * @param pattern The pattern to match.
+ * @returns The first matched substring, or null if no match.
+ */
+function findFirstMatchText(inputLine: string, pattern: string): string | null {
+  const hasStartAnchor = pattern.startsWith('^');
+  const hasEndAnchor = pattern.endsWith('$');
+
+  let cleanPattern = pattern;
+  if (hasStartAnchor) {
+    cleanPattern = cleanPattern.slice(1);
+  }
+  if (hasEndAnchor) {
+    cleanPattern = cleanPattern.slice(0, -1);
+  }
+
+  const tokens = tokenizePattern(cleanPattern);
+
+  if (hasStartAnchor && hasEndAnchor) {
+    const matchLength = matchTokensLengthAtEnd(inputLine, tokens, 0);
+    if (matchLength !== -1) {
+      return inputLine.slice(0, matchLength);
+    }
+    return null;
+  }
+
+  if (hasStartAnchor) {
+    const matchLength = matchTokensLengthAt(inputLine, tokens, 0);
+    if (matchLength !== -1) {
+      return inputLine.slice(0, matchLength);
+    }
+    return null;
+  }
+
+  if (hasEndAnchor) {
+    for (let i = 0; i < inputLine.length; i++) {
+      const matchLength = matchTokensLengthAtEnd(inputLine, tokens, i);
+      if (matchLength !== -1) {
+        return inputLine.slice(i, i + matchLength);
+      }
+    }
+    return null;
+  }
+
+  for (let i = 0; i < inputLine.length; i++) {
+    const matchLength = matchTokensLengthAt(inputLine, tokens, i);
+    if (matchLength !== -1) {
+      return inputLine.slice(i, i + matchLength);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Check if tokens match starting from startPos and end exactly at the end of input.
  * @param input The input string to match against.
  * @param tokens The array of tokens to match.
@@ -380,11 +583,6 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
   }
 }
 
-if (args[2] !== "-E") {
-  console.log("Expected first argument to be '-E'");
-  process.exit(1);
-}
-
 const lines = inputLine.split("\n");
 // Remove trailing empty string caused by a trailing newline
 if (lines.length > 0 && lines[lines.length - 1] === "") {
@@ -393,9 +591,17 @@ if (lines.length > 0 && lines[lines.length - 1] === "") {
 
 let anyMatch = false;
 for (const line of lines) {
-  if (matchPattern(line, pattern)) {
-    process.stdout.write(line + "\n");
-    anyMatch = true;
+  if (onlyMatching) {
+    const matchedText = findFirstMatchText(line, pattern);
+    if (matchedText !== null) {
+      process.stdout.write(matchedText + "\n");
+      anyMatch = true;
+    }
+  } else {
+    if (matchPattern(line, pattern)) {
+      process.stdout.write(line + "\n");
+      anyMatch = true;
+    }
   }
 }
 
