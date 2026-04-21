@@ -7,7 +7,10 @@ const args = process.argv;
 
 const cliArgs = args.slice(2);
 const onlyMatching = cliArgs.includes("-o");
-const colorAlways = cliArgs.includes("--color=always");
+const colorArg = cliArgs.find((arg) => arg.startsWith("--color="));
+const colorMode = colorArg ? colorArg.slice("--color=".length) : null;
+const shouldColorize =
+  colorMode === "always" || (colorMode === "auto" && Boolean(process.stdout.isTTY));
 const extendedFlagIndex = cliArgs.indexOf("-E");
 
 if (extendedFlagIndex === -1 || extendedFlagIndex === cliArgs.length - 1) {
@@ -667,7 +670,7 @@ for (const line of lines) {
     }
   } else {
     if (matchPattern(line, pattern)) {
-      const outputLine = colorAlways ? highlightAllMatches(line, pattern) : line;
+      const outputLine = shouldColorize ? highlightAllMatches(line, pattern) : line;
       process.stdout.write(outputLine + "\n");
       anyMatch = true;
     }
