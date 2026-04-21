@@ -20,7 +20,23 @@ if (extendedFlagIndex === -1 || extendedFlagIndex === cliArgs.length - 1) {
 
 const pattern = cliArgs[extendedFlagIndex + 1];
 
-const inputLine: string = await Bun.stdin.text();
+const filteredArgs = cliArgs.filter((arg, idx) => {
+  if (idx === extendedFlagIndex || idx === extendedFlagIndex + 1) {
+    return false;
+  }
+  if (arg === "-o") {
+    return false;
+  }
+  if (arg.startsWith("--color=")) {
+    return false;
+  }
+  return true;
+});
+
+const filePath = filteredArgs.length > 0 ? filteredArgs[0] : null;
+const inputLine: string = filePath === null
+  ? await Bun.stdin.text()
+  : await Bun.file(filePath).text();
 
 const ANSI_COLOR_OPEN = "\x1b[01;31m";
 const ANSI_COLOR_CLOSE = "\x1b[m";
@@ -69,7 +85,7 @@ function tokenizePattern(pattern: string): string[] {
       i++;
     }
 
-    if (i < pattern.length && (pattern[i] === '+' || pattern[i] === '?')) {
+    if (i < pattern.length && (pattern[i] === '+' || pattern[i] === '?' || pattern[i] === '*')) {
       token += pattern[i];
       i++;
     }
@@ -212,6 +228,29 @@ function matchTokensLengthHelper(
     }
 
     return -1;
+  } else if (token.endsWith('*') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+
+    for (let count = matchCount; count >= 0; count--) {
+      const result = matchTokensLengthHelper(
+        input,
+        tokens,
+        tokenIdx + 1,
+        inputPos + count,
+        startPos,
+        mustEndAtInputEnd,
+      );
+      if (result !== -1) {
+        return result;
+      }
+    }
+
+    return -1;
   } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
 
@@ -305,6 +344,21 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
     }
     
     return false;
+  } else if (token.endsWith('*') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+
+    for (let count = matchCount; count >= 0; count--) {
+      if (matchTokensHelper(input, tokens, tokenIdx + 1, inputPos + count)) {
+        return true;
+      }
+    }
+
+    return false;
   } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     
@@ -389,6 +443,22 @@ function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: numbe
       }
     }
     
+    return -1;
+  } else if (token.endsWith('*') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+
+    for (let count = matchCount; count >= 0; count--) {
+      const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, inputPos + count);
+      if (result !== -1) {
+        return result;
+      }
+    }
+
     return -1;
   } else if (token.endsWith('?') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
@@ -629,6 +699,20 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
     }
     
     for (let count = matchCount; count >= 1; count--) {
+      if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + count)) {
+        return true;
+      }
+    }
+    return false;
+  } else if (token.endsWith('*') && !token.startsWith('(')) {
+    const baseToken = token.slice(0, -1);
+    let matchCount = 0;
+
+    while (inputPos + matchCount < input.length && matchToken(input[inputPos + matchCount], baseToken)) {
+      matchCount++;
+    }
+
+    for (let count = matchCount; count >= 0; count--) {
       if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + count)) {
         return true;
       }
