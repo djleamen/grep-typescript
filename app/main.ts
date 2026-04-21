@@ -3,10 +3,14 @@
  * From CodeCrafters.io build-your-own-grep (TypeScript).
  */
 
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+
 const args = process.argv;
 
 const cliArgs = args.slice(2);
 const onlyMatching = cliArgs.includes("-o");
+const recursiveSearch = cliArgs.includes("-r");
 const colorArg = cliArgs.find((arg) => arg.startsWith("--color="));
 const colorMode = colorArg ? colorArg.slice("--color=".length) : null;
 const shouldColorize =
@@ -27,6 +31,9 @@ const filteredArgs = cliArgs.filter((arg, idx) => {
   if (arg === "-o") {
     return false;
   }
+  if (arg === "-r") {
+    return false;
+  }
   if (arg.startsWith("--color=")) {
     return false;
   }
@@ -35,11 +42,40 @@ const filteredArgs = cliArgs.filter((arg, idx) => {
 
 const filePaths = filteredArgs;
 const hasFileInput = filePaths.length > 0;
-const shouldPrefixFileName = filePaths.length > 1;
+const shouldPrefixFileName = recursiveSearch || filePaths.length > 1;
 
-const inputSources = hasFileInput
+type InputSource = { filePath: string | null; content: string };
+
+/**
+ * Recursively collect all file paths from a directory.
+ */
+async function collectFilesRecursive(rootPath: string): Promise<string[]> {
+  const entries = await readdir(rootPath, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectFilesRecursive(fullPath)));
+    } else if (entry.isFile()) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+let targetFilePaths: string[];
+if (recursiveSearch) {
+  const nestedFileLists = await Promise.all(filePaths.map((filePath) => collectFilesRecursive(filePath)));
+  targetFilePaths = nestedFileLists.flat();
+} else {
+  targetFilePaths = filePaths;
+}
+
+const inputSources: InputSource[] = hasFileInput
   ? await Promise.all(
-      filePaths.map(async (filePath) => ({
+      targetFilePaths.map(async (filePath) => ({
         filePath,
         content: await Bun.file(filePath).text(),
       })),
