@@ -542,18 +542,32 @@ function findAllMatchesText(inputLine: string, pattern: string): string[] {
 }
 
 /**
- * Highlight the first match in a line using grep's default ANSI color style.
+ * Highlight all non-overlapping matches in a line using grep's default ANSI color style.
  */
-function highlightFirstMatch(inputLine: string, pattern: string): string {
-  const match = findNextMatch(inputLine, pattern, 0);
-  if (match === null || match.length === 0) {
-    return inputLine;
+function highlightAllMatches(inputLine: string, pattern: string): string {
+  let result = '';
+  let cursor = 0;
+
+  while (cursor <= inputLine.length) {
+    const match = findNextMatch(inputLine, pattern, cursor);
+    if (match === null) {
+      break;
+    }
+
+    if (match.length === 0) {
+      // Avoid infinite loops for zero-length matches.
+      result += inputLine.slice(cursor, match.start + 1);
+      cursor = match.start + 1;
+      continue;
+    }
+
+    result += inputLine.slice(cursor, match.start);
+    result += `${ANSI_COLOR_OPEN}${inputLine.slice(match.start, match.start + match.length)}${ANSI_COLOR_CLOSE}`;
+    cursor = match.start + match.length;
   }
 
-  const before = inputLine.slice(0, match.start);
-  const matched = inputLine.slice(match.start, match.start + match.length);
-  const after = inputLine.slice(match.start + match.length);
-  return `${before}${ANSI_COLOR_OPEN}${matched}${ANSI_COLOR_CLOSE}${after}`;
+  result += inputLine.slice(cursor);
+  return result;
 }
 
 /**
@@ -653,7 +667,7 @@ for (const line of lines) {
     }
   } else {
     if (matchPattern(line, pattern)) {
-      const outputLine = colorAlways ? highlightFirstMatch(line, pattern) : line;
+      const outputLine = colorAlways ? highlightAllMatches(line, pattern) : line;
       process.stdout.write(outputLine + "\n");
       anyMatch = true;
     }
