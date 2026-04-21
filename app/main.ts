@@ -1066,7 +1066,44 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
       return matchTokensHelperEnd(input, tokens, tokenIdx + 1, pos);
     }
   }
-  
+
+  const atLeastQHE = parseAtLeastQuantifier(token);
+  if (atLeastQHE !== null) {
+    const { base, n } = atLeastQHE;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      const positions: number[] = [];
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      positions.push(pos);
+      while (true) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, positions[i])) return true;
+      }
+      return false;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      while (pos < input.length && matchToken(input[pos], base)) pos++;
+      for (let end = pos; end >= inputPos + n; end--) {
+        if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, end)) return true;
+      }
+      return false;
+    }
+  }
+
   if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
     let matchCount = 0;
