@@ -132,6 +132,15 @@ function tokenizePattern(pattern: string): string[] {
     if (i < pattern.length && (pattern[i] === '+' || pattern[i] === '?' || pattern[i] === '*')) {
       token += pattern[i];
       i++;
+    } else if (i < pattern.length && pattern[i] === '{') {
+      const closeBrace = pattern.indexOf('}', i);
+      if (closeBrace !== -1) {
+        const inner = pattern.slice(i + 1, closeBrace);
+        if (/^\d+$/.test(inner)) {
+          token += pattern.slice(i, closeBrace + 1);
+          i = closeBrace + 1;
+        }
+      }
     }
     tokens.push(token);
   }
@@ -198,6 +207,18 @@ function matchTokensLengthAt(input: string, tokens: string[], startPos: number):
  */
 function matchTokensLengthAtEnd(input: string, tokens: string[], startPos: number): number {
   return matchTokensLengthHelper(input, tokens, 0, startPos, startPos, true);
+}
+
+/**
+ * Parse a {n} exact quantifier suffix from a token.
+ * Returns { base, n } if found, null otherwise.
+ */
+function parseExactQuantifier(token: string): { base: string; n: number } | null {
+  const match = token.match(/^(.*)\{(\d+)\}$/);
+  if (match) {
+    return { base: match[1], n: parseInt(match[2], 10) };
+  }
+  return null;
 }
 
 /**
@@ -285,6 +306,28 @@ function matchTokensLengthHelper(
         if (result !== -1) return result;
       }
       return matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos, startPos, mustEndAtInputEnd);
+    }
+  }
+
+  const exactQLH = parseExactQuantifier(token);
+  if (exactQLH !== null) {
+    const { base, n } = exactQLH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return -1;
+        pos += consumed;
+      }
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd);
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+        pos++;
+      }
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd);
     }
   }
 
@@ -451,6 +494,28 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
       return matchTokensHelper(input, tokens, tokenIdx + 1, inputPos);
     }
   }
+
+  const exactQH = parseExactQuantifier(token);
+  if (exactQH !== null) {
+    const { base, n } = exactQH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      return matchTokensHelper(input, tokens, tokenIdx + 1, pos);
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      return matchTokensHelper(input, tokens, tokenIdx + 1, pos);
+    }
+  }
   
   if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
@@ -550,6 +615,17 @@ function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: numbe
   }
   
   const token = tokens[tokenIdx];
+
+  const exactQA = parseExactQuantifier(token);
+  if (exactQA !== null) {
+    const { base, n } = exactQA;
+    let pos = inputPos;
+    for (let k = 0; k < n; k++) {
+      if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+      pos++;
+    }
+    return matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, pos);
+  }
   
   if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
@@ -864,6 +940,28 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
         if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos + consumed)) return true;
       }
       return matchTokensHelperEnd(input, tokens, tokenIdx + 1, inputPos);
+    }
+  }
+
+  const exactQHE = parseExactQuantifier(token);
+  if (exactQHE !== null) {
+    const { base, n } = exactQHE;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      return matchTokensHelperEnd(input, tokens, tokenIdx + 1, pos);
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      return matchTokensHelperEnd(input, tokens, tokenIdx + 1, pos);
     }
   }
   
