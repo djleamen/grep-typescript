@@ -7,6 +7,7 @@ const args = process.argv;
 
 const cliArgs = args.slice(2);
 const onlyMatching = cliArgs.includes("-o");
+const colorAlways = cliArgs.includes("--color=always");
 const extendedFlagIndex = cliArgs.indexOf("-E");
 
 if (extendedFlagIndex === -1 || extendedFlagIndex === cliArgs.length - 1) {
@@ -17,6 +18,9 @@ if (extendedFlagIndex === -1 || extendedFlagIndex === cliArgs.length - 1) {
 const pattern = cliArgs[extendedFlagIndex + 1];
 
 const inputLine: string = await Bun.stdin.text();
+
+const ANSI_COLOR_OPEN = "\x1b[01;31m";
+const ANSI_COLOR_CLOSE = "\x1b[m";
 
 /**
  * Tokenize a pattern into individual components.
@@ -538,6 +542,21 @@ function findAllMatchesText(inputLine: string, pattern: string): string[] {
 }
 
 /**
+ * Highlight the first match in a line using grep's default ANSI color style.
+ */
+function highlightFirstMatch(inputLine: string, pattern: string): string {
+  const match = findNextMatch(inputLine, pattern, 0);
+  if (match === null || match.length === 0) {
+    return inputLine;
+  }
+
+  const before = inputLine.slice(0, match.start);
+  const matched = inputLine.slice(match.start, match.start + match.length);
+  const after = inputLine.slice(match.start + match.length);
+  return `${before}${ANSI_COLOR_OPEN}${matched}${ANSI_COLOR_CLOSE}${after}`;
+}
+
+/**
  * Check if tokens match starting from startPos and end exactly at the end of input.
  * @param input The input string to match against.
  * @param tokens The array of tokens to match.
@@ -634,7 +653,8 @@ for (const line of lines) {
     }
   } else {
     if (matchPattern(line, pattern)) {
-      process.stdout.write(line + "\n");
+      const outputLine = colorAlways ? highlightFirstMatch(line, pattern) : line;
+      process.stdout.write(outputLine + "\n");
       anyMatch = true;
     }
   }
