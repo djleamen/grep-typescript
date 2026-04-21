@@ -33,10 +33,18 @@ const filteredArgs = cliArgs.filter((arg, idx) => {
   return true;
 });
 
-const filePath = filteredArgs.length > 0 ? filteredArgs[0] : null;
-const inputLine: string = filePath === null
-  ? await Bun.stdin.text()
-  : await Bun.file(filePath).text();
+const filePaths = filteredArgs;
+const hasFileInput = filePaths.length > 0;
+const shouldPrefixFileName = filePaths.length > 1;
+
+const inputSources = hasFileInput
+  ? await Promise.all(
+      filePaths.map(async (filePath) => ({
+        filePath,
+        content: await Bun.file(filePath).text(),
+      })),
+    )
+  : [{ filePath: null, content: await Bun.stdin.text() }];
 
 const ANSI_COLOR_OPEN = "\x1b[01;31m";
 const ANSI_COLOR_CLOSE = "\x1b[m";
@@ -738,25 +746,29 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
   }
 }
 
-const lines = inputLine.split("\n");
-// Remove trailing empty string caused by a trailing newline
-if (lines.length > 0 && lines[lines.length - 1] === "") {
-  lines.pop();
-}
-
 let anyMatch = false;
-for (const line of lines) {
-  if (onlyMatching) {
-    const matchedTexts = findAllMatchesText(line, pattern);
-    for (const matchedText of matchedTexts) {
-      process.stdout.write(matchedText + "\n");
-      anyMatch = true;
-    }
-  } else {
-    if (matchPattern(line, pattern)) {
-      const outputLine = shouldColorize ? highlightAllMatches(line, pattern) : line;
-      process.stdout.write(outputLine + "\n");
-      anyMatch = true;
+for (const source of inputSources) {
+  const lines = source.content.split("\n");
+  // Remove trailing empty string caused by a trailing newline
+  if (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  for (const line of lines) {
+    const linePrefix = shouldPrefixFileName && source.filePath !== null ? `${source.filePath}:` : "";
+
+    if (onlyMatching) {
+      const matchedTexts = findAllMatchesText(line, pattern);
+      for (const matchedText of matchedTexts) {
+        process.stdout.write(linePrefix + matchedText + "\n");
+        anyMatch = true;
+      }
+    } else {
+      if (matchPattern(line, pattern)) {
+        const outputLine = shouldColorize ? highlightAllMatches(line, pattern) : line;
+        process.stdout.write(linePrefix + outputLine + "\n");
+        anyMatch = true;
+      }
     }
   }
 }
