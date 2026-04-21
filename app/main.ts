@@ -136,7 +136,7 @@ function tokenizePattern(pattern: string): string[] {
       const closeBrace = pattern.indexOf('}', i);
       if (closeBrace !== -1) {
         const inner = pattern.slice(i + 1, closeBrace);
-        if (/^\d+$/.test(inner)) {
+        if (/^\d+$/.test(inner) || /^\d+,$/.test(inner)) {
           token += pattern.slice(i, closeBrace + 1);
           i = closeBrace + 1;
         }
@@ -215,6 +215,18 @@ function matchTokensLengthAtEnd(input: string, tokens: string[], startPos: numbe
  */
 function parseExactQuantifier(token: string): { base: string; n: number } | null {
   const match = token.match(/^(.*)\{(\d+)\}$/);
+  if (match) {
+    return { base: match[1], n: parseInt(match[2], 10) };
+  }
+  return null;
+}
+
+/**
+ * Parse a {n,} at-least quantifier suffix from a token.
+ * Returns { base, n } if found, null otherwise.
+ */
+function parseAtLeastQuantifier(token: string): { base: string; n: number } | null {
+  const match = token.match(/^(.*)\{(\d+),\}$/);
   if (match) {
     return { base: match[1], n: parseInt(match[2], 10) };
   }
@@ -328,6 +340,44 @@ function matchTokensLengthHelper(
         pos++;
       }
       return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd);
+    }
+  }
+
+  const atLeastQLH = parseAtLeastQuantifier(token);
+  if (atLeastQLH !== null) {
+    const { base, n } = atLeastQLH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return -1;
+        pos += consumed;
+      }
+      const positions: number[] = [pos];
+      while (true) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        if (result !== -1) return result;
+      }
+      return -1;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+        pos++;
+      }
+      while (pos < input.length && matchToken(input[pos], base)) pos++;
+      for (let end = pos; end >= inputPos + n; end--) {
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd);
+        if (result !== -1) return result;
+      }
+      return -1;
     }
   }
 
@@ -516,6 +566,42 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
       return matchTokensHelper(input, tokens, tokenIdx + 1, pos);
     }
   }
+
+  const atLeastQH = parseAtLeastQuantifier(token);
+  if (atLeastQH !== null) {
+    const { base, n } = atLeastQH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      const positions: number[] = [pos];
+      while (true) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        if (matchTokensHelper(input, tokens, tokenIdx + 1, positions[i])) return true;
+      }
+      return false;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      while (pos < input.length && matchToken(input[pos], base)) pos++;
+      for (let end = pos; end >= inputPos + n; end--) {
+        if (matchTokensHelper(input, tokens, tokenIdx + 1, end)) return true;
+      }
+      return false;
+    }
+  }
   
   if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
@@ -625,6 +711,22 @@ function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: numbe
       pos++;
     }
     return matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, pos);
+  }
+
+  const atLeastQA = parseAtLeastQuantifier(token);
+  if (atLeastQA !== null) {
+    const { base, n } = atLeastQA;
+    let pos = inputPos;
+    for (let k = 0; k < n; k++) {
+      if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+      pos++;
+    }
+    while (pos < input.length && matchToken(input[pos], base)) pos++;
+    for (let end = pos; end >= inputPos + n; end--) {
+      const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, end);
+      if (result !== -1) return result;
+    }
+    return -1;
   }
   
   if (token.endsWith('+') && !token.startsWith('(')) {
