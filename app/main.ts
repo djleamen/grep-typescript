@@ -48,6 +48,8 @@ type InputSource = { filePath: string | null; content: string };
 
 /**
  * Recursively collect all file paths from a directory.
+ * @param rootPath The root directory to start collecting files from.
+ * @return A promise that resolves to an array of file paths found within the directory and its subdirectories.
  */
 async function collectFilesRecursive(rootPath: string): Promise<string[]> {
   const entries = await readdir(rootPath, { withFileTypes: true });
@@ -136,7 +138,7 @@ function tokenizePattern(pattern: string): string[] {
       const closeBrace = pattern.indexOf('}', i);
       if (closeBrace !== -1) {
         const inner = pattern.slice(i + 1, closeBrace);
-        if (/^\d+$/.test(inner) || /^\d+,$/.test(inner)) {
+        if (/^\d+$/.test(inner) || /^\d+,$/.test(inner) || /^\d+,\d+$/.test(inner)) {
           token += pattern.slice(i, closeBrace + 1);
           i = closeBrace + 1;
         }
@@ -212,6 +214,8 @@ function matchTokensLengthAtEnd(input: string, tokens: string[], startPos: numbe
 /**
  * Parse a {n} exact quantifier suffix from a token.
  * Returns { base, n } if found, null otherwise.
+ * @param token The token to parse for an exact quantifier.
+ * @return An object containing the base token and the exact number of repetitions if the quantifier is found, or null if not found.
  */
 function parseExactQuantifier(token: string): { base: string; n: number } | null {
   const match = token.match(/^(.*)\{(\d+)\}$/);
@@ -224,6 +228,8 @@ function parseExactQuantifier(token: string): { base: string; n: number } | null
 /**
  * Parse a {n,} at-least quantifier suffix from a token.
  * Returns { base, n } if found, null otherwise.
+ * @param token The token to parse for an at-least quantifier.
+ * @return An object containing the base token and the minimum number of repetitions if the quantifier is found, or null if not found.
  */
 function parseAtLeastQuantifier(token: string): { base: string; n: number } | null {
   const match = token.match(/^(.*)\{(\d+),\}$/);
@@ -234,7 +240,28 @@ function parseAtLeastQuantifier(token: string): { base: string; n: number } | nu
 }
 
 /**
+ * Parse a {n,m} range quantifier suffix from a token.
+ * Returns { base, n, m } if found, null otherwise.
+ * @param token The token to parse for a range quantifier.
+ * @return An object containing the base token, the minimum number of repetitions, and the maximum number of repetitions if the quantifier is found, or null if not found.
+ */
+function parseRangeQuantifier(token: string): { base: string; n: number; m: number } | null {
+  const match = token.match(/^(.*)\{(\d+),(\d+)\}$/);
+  if (match) {
+    return { base: match[1], n: parseInt(match[2], 10), m: parseInt(match[3], 10) };
+  }
+  return null;
+}
+
+/**
  * Helper function to recursively match tokens and return consumed length.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens to match.
+ * @param tokenIdx The current index in the tokens array.
+ * @param inputPos The current position in the input string.
+ * @param startPos The starting position of the match in the input string.
+ * @param mustEndAtInputEnd Whether the match must end at the end of the input string.
+ * @return The number of characters consumed if the tokens match, or -1 if they do not match.
  */
 function matchTokensLengthHelper(
   input: string,
@@ -374,6 +401,47 @@ function matchTokensLengthHelper(
       }
       while (pos < input.length && matchToken(input[pos], base)) pos++;
       for (let end = pos; end >= inputPos + n; end--) {
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd);
+        if (result !== -1) return result;
+      }
+      return -1;
+    }
+  }
+
+  const rangeQLH = parseRangeQuantifier(token);
+  if (rangeQLH !== null) {
+    const { base, n, m } = rangeQLH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return -1;
+        pos += consumed;
+      }
+      const positions: number[] = [pos];
+      for (let k = n; k < m; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        if (result !== -1) return result;
+      }
+      return -1;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+        pos++;
+      }
+      let maxPos = pos;
+      for (let k = n; k < m && maxPos < input.length && matchToken(input[maxPos], base); k++) {
+        maxPos++;
+      }
+      for (let end = maxPos; end >= pos; end--) {
         const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd);
         if (result !== -1) return result;
       }
@@ -602,6 +670,45 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
       return false;
     }
   }
+
+  const rangeQH = parseRangeQuantifier(token);
+  if (rangeQH !== null) {
+    const { base, n, m } = rangeQH;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      const positions: number[] = [pos];
+      for (let k = n; k < m; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        if (matchTokensHelper(input, tokens, tokenIdx + 1, positions[i])) return true;
+      }
+      return false;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      let maxPos = pos;
+      for (let k = n; k < m && maxPos < input.length && matchToken(input[maxPos], base); k++) {
+        maxPos++;
+      }
+      for (let end = maxPos; end >= pos; end--) {
+        if (matchTokensHelper(input, tokens, tokenIdx + 1, end)) return true;
+      }
+      return false;
+    }
+  }
   
   if (token.endsWith('+') && !token.startsWith('(')) {
     const baseToken = token.slice(0, -1);
@@ -660,6 +767,8 @@ function matchTokensHelper(input: string, tokens: string[], tokenIdx: number, in
 
 /**
  * Split a pattern by | operator, respecting nested groups.
+ * @param pattern The pattern string to split into alternatives.
+ * @returns An array of alternative pattern strings extracted from the input pattern.
  */
 function splitAlternatives(pattern: string): string[] {
   const alternatives: string[] = [];
@@ -687,6 +796,10 @@ function splitAlternatives(pattern: string): string[] {
 /**
  * Check if an alternative matches starting at the given position.
  * Returns the number of characters consumed, or -1 if no match.
+ * @param input The input string to match against.
+ * @param altTokens The array of tokens representing the alternative to match.
+ * @param startPos The starting position in the input string to attempt the match.
+ * @returns The number of characters consumed if the alternative matches, or -1 if it does not match.
  */
 function matchAlternative(input: string, altTokens: string[], startPos: number): number {
   return matchAlternativeHelper(input, altTokens, 0, startPos, startPos);
@@ -694,6 +807,12 @@ function matchAlternative(input: string, altTokens: string[], startPos: number):
 
 /**
  * Helper to match an alternative and track chars consumed.
+ * @param input The input string to match against.
+ * @param tokens The array of tokens representing the alternative to match.
+ * @param tokenIdx The current index in the tokens array.
+ * @param startPos The starting position of the match in the input string.
+ * @param inputPos The current position in the input string.
+ * @returns The number of characters consumed if the alternative matches, or -1 if it does not match.
  */
 function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: number, startPos: number, inputPos: number): number {
   if (tokenIdx >= tokens.length) {
@@ -723,6 +842,25 @@ function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: numbe
     }
     while (pos < input.length && matchToken(input[pos], base)) pos++;
     for (let end = pos; end >= inputPos + n; end--) {
+      const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, end);
+      if (result !== -1) return result;
+    }
+    return -1;
+  }
+
+  const rangeQA = parseRangeQuantifier(token);
+  if (rangeQA !== null) {
+    const { base, n, m } = rangeQA;
+    let pos = inputPos;
+    for (let k = 0; k < n; k++) {
+      if (pos >= input.length || !matchToken(input[pos], base)) return -1;
+      pos++;
+    }
+    let maxPos = pos;
+    for (let k = n; k < m && maxPos < input.length && matchToken(input[maxPos], base); k++) {
+      maxPos++;
+    }
+    for (let end = maxPos; end >= pos; end--) {
       const result = matchAlternativeHelper(input, tokens, tokenIdx + 1, startPos, end);
       if (result !== -1) return result;
     }
@@ -790,6 +928,10 @@ function matchAlternativeHelper(input: string, tokens: string[], tokenIdx: numbe
 /**
  * Try to match a group (with alternatives) at a given position.
  * Returns the number of characters consumed, or -1 if no match.
+ * @param input The input string to match against.
+ * @param innerContent The inner content of the group to match.
+ * @param inputPos The position in the input string to start matching from.
+ * @returns The number of characters consumed if the group matches, or -1 if it does not match.
  */
 function tryMatchGroupAtPos(input: string, innerContent: string, inputPos: number): number {
   const alternatives = splitAlternatives(innerContent);
@@ -935,6 +1077,9 @@ function findAllMatchesText(inputLine: string, pattern: string): string[] {
 
 /**
  * Highlight all non-overlapping matches in a line using grep's default ANSI color style.
+ * @param inputLine The line of input to search.
+ * @param pattern The pattern to match.
+ * @returns The input line with all matches highlighted.
  */
 function highlightAllMatches(inputLine: string, pattern: string): string {
   let result = '';
@@ -1098,6 +1243,45 @@ function matchTokensHelperEnd(input: string, tokens: string[], tokenIdx: number,
       }
       while (pos < input.length && matchToken(input[pos], base)) pos++;
       for (let end = pos; end >= inputPos + n; end--) {
+        if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, end)) return true;
+      }
+      return false;
+    }
+  }
+
+  const rangeQHE = parseRangeQuantifier(token);
+  if (rangeQHE !== null) {
+    const { base, n, m } = rangeQHE;
+    if (base.startsWith('(') && base.endsWith(')')) {
+      const innerContent = base.slice(1, -1);
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed === -1) return false;
+        pos += consumed;
+      }
+      const positions: number[] = [pos];
+      for (let k = n; k < m; k++) {
+        const consumed = tryMatchGroupAtPos(input, innerContent, pos);
+        if (consumed <= 0) break;
+        pos += consumed;
+        positions.push(pos);
+      }
+      for (let i = positions.length - 1; i >= 0; i--) {
+        if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, positions[i])) return true;
+      }
+      return false;
+    } else {
+      let pos = inputPos;
+      for (let k = 0; k < n; k++) {
+        if (pos >= input.length || !matchToken(input[pos], base)) return false;
+        pos++;
+      }
+      let maxPos = pos;
+      for (let k = n; k < m && maxPos < input.length && matchToken(input[maxPos], base); k++) {
+        maxPos++;
+      }
+      for (let end = maxPos; end >= pos; end--) {
         if (matchTokensHelperEnd(input, tokens, tokenIdx + 1, end)) return true;
       }
       return false;
