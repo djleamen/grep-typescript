@@ -186,7 +186,7 @@ function matchToken(char: string, token: string): boolean {
  * @returns True if the sequence of tokens matches starting from the given position, false otherwise.
  */
 function matchTokensAt(input: string, tokens: string[], startPos: number): boolean {
-  return matchTokensHelper(input, tokens, 0, startPos);
+  return matchTokensLengthHelper(input, tokens, 0, startPos, startPos, false, []) !== -1;
 }
 
 /**
@@ -270,6 +270,7 @@ function matchTokensLengthHelper(
   inputPos: number,
   startPos: number,
   mustEndAtInputEnd: boolean,
+  captures: (string | undefined)[] = [],
 ): number {
   if (tokenIdx >= tokens.length) {
     if (mustEndAtInputEnd && inputPos !== input.length) {
@@ -284,10 +285,14 @@ function matchTokensLengthHelper(
     const innerContent = token.slice(1, -1);
     const alternatives = splitAlternatives(innerContent);
 
+    const groupNum = tokens.slice(0, tokenIdx).filter(t => t.startsWith('(')).length + 1;
+    const savedCapture = captures[groupNum - 1];
+
     for (const alternative of alternatives) {
       const altTokens = tokenizePattern(alternative);
       const charsConsumed = matchAlternative(input, altTokens, inputPos);
       if (charsConsumed !== -1) {
+        captures[groupNum - 1] = input.slice(inputPos, inputPos + charsConsumed);
         const result = matchTokensLengthHelper(
           input,
           tokens,
@@ -295,6 +300,7 @@ function matchTokensLengthHelper(
           inputPos + charsConsumed,
           startPos,
           mustEndAtInputEnd,
+          captures,
         );
         if (result !== -1) {
           return result;
@@ -302,6 +308,7 @@ function matchTokensLengthHelper(
       }
     }
 
+    captures[groupNum - 1] = savedCapture;
     return -1;
   }
 
@@ -320,7 +327,7 @@ function matchTokensLengthHelper(
       }
       if (positions.length === 0) return -1;
       for (let i = positions.length - 1; i >= 0; i--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
@@ -334,17 +341,17 @@ function matchTokensLengthHelper(
         positions.push(pos);
       }
       for (let i = positions.length - 1; i >= 0; i--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
     } else {
       const consumed = tryMatchGroupAtPos(input, innerContent, inputPos);
       if (consumed > 0) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos + consumed, startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos + consumed, startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
-      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos, startPos, mustEndAtInputEnd);
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos, startPos, mustEndAtInputEnd, captures);
     }
   }
 
@@ -359,14 +366,14 @@ function matchTokensLengthHelper(
         if (consumed === -1) return -1;
         pos += consumed;
       }
-      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd);
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd, captures);
     } else {
       let pos = inputPos;
       for (let k = 0; k < n; k++) {
         if (pos >= input.length || !matchToken(input[pos], base)) return -1;
         pos++;
       }
-      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd);
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, pos, startPos, mustEndAtInputEnd, captures);
     }
   }
 
@@ -389,7 +396,7 @@ function matchTokensLengthHelper(
         positions.push(pos);
       }
       for (let i = positions.length - 1; i >= 0; i--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
@@ -401,7 +408,7 @@ function matchTokensLengthHelper(
       }
       while (pos < input.length && matchToken(input[pos], base)) pos++;
       for (let end = pos; end >= inputPos + n; end--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
@@ -427,7 +434,7 @@ function matchTokensLengthHelper(
         positions.push(pos);
       }
       for (let i = positions.length - 1; i >= 0; i--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, positions[i], startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
@@ -442,7 +449,7 @@ function matchTokensLengthHelper(
         maxPos++;
       }
       for (let end = maxPos; end >= pos; end--) {
-        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd);
+        const result = matchTokensLengthHelper(input, tokens, tokenIdx + 1, end, startPos, mustEndAtInputEnd, captures);
         if (result !== -1) return result;
       }
       return -1;
@@ -469,6 +476,7 @@ function matchTokensLengthHelper(
         inputPos + count,
         startPos,
         mustEndAtInputEnd,
+        captures,
       );
       if (result !== -1) {
         return result;
@@ -492,6 +500,7 @@ function matchTokensLengthHelper(
         inputPos + count,
         startPos,
         mustEndAtInputEnd,
+        captures,
       );
       if (result !== -1) {
         return result;
@@ -510,6 +519,7 @@ function matchTokensLengthHelper(
         inputPos + 1,
         startPos,
         mustEndAtInputEnd,
+        captures,
       );
       if (result !== -1) {
         return result;
@@ -523,8 +533,17 @@ function matchTokensLengthHelper(
       inputPos,
       startPos,
       mustEndAtInputEnd,
+      captures,
     );
   } else {
+    // Handle backreferences \1-\9
+    if (token.length === 2 && token[0] === '\\' && token[1] >= '1' && token[1] <= '9') {
+      const groupNum = parseInt(token[1], 10);
+      const capturedText = captures[groupNum - 1];
+      if (capturedText === undefined) return -1;
+      if (input.slice(inputPos, inputPos + capturedText.length) !== capturedText) return -1;
+      return matchTokensLengthHelper(input, tokens, tokenIdx + 1, inputPos + capturedText.length, startPos, mustEndAtInputEnd, captures);
+    }
     if (inputPos >= input.length) {
       return -1;
     }
@@ -538,6 +557,7 @@ function matchTokensLengthHelper(
       inputPos + 1,
       startPos,
       mustEndAtInputEnd,
+      captures,
     );
   }
 }
@@ -1115,7 +1135,7 @@ function highlightAllMatches(inputLine: string, pattern: string): string {
  * @returns True if the tokens match and end at the end of the input, false otherwise.
  */
 function matchTokensAtEnd(input: string, tokens: string[], startPos: number): boolean {
-  return matchTokensHelperEnd(input, tokens, 0, startPos);
+  return matchTokensLengthHelper(input, tokens, 0, startPos, startPos, true, []) !== -1;
 }
 
 /**
