@@ -300,30 +300,29 @@ function matchTokensLengthHelper(
 
     const precedingParens = tokens.slice(0, tokenIdx).reduce((sum, t) => sum + countOpenParens(t), 0);
     const groupNum = groupOffset + precedingParens + 1;
-    const savedCapture = captures[groupNum - 1];
+    const capturesBefore = captures.slice();
 
     for (const alternative of alternatives) {
       const altTokens = tokenizePattern(alternative);
-      const charsConsumed = matchAlternative(input, altTokens, inputPos, groupNum, captures);
-      if (charsConsumed !== -1) {
-        captures[groupNum - 1] = input.slice(inputPos, inputPos + charsConsumed);
-        const result = matchTokensLengthHelper(
-          input,
-          tokens,
-          tokenIdx + 1,
-          inputPos + charsConsumed,
-          startPos,
-          mustEndAtInputEnd,
-          captures,
-          groupOffset,
+      // Try all possible match lengths (greedy: longest first)
+      for (let endPos = input.length; endPos >= inputPos; endPos--) {
+        // Restore captures to pre-group state for each attempt
+        captures.splice(0, captures.length, ...capturesBefore);
+        const innerInput = input.slice(0, endPos);
+        const innerResult = matchTokensLengthHelper(
+          innerInput, altTokens, 0, inputPos, inputPos, true, captures, groupNum
         );
-        if (result !== -1) {
-          return result;
+        if (innerResult !== -1) {
+          captures[groupNum - 1] = input.slice(inputPos, endPos);
+          const result = matchTokensLengthHelper(
+            input, tokens, tokenIdx + 1, endPos, startPos, mustEndAtInputEnd, captures, groupOffset,
+          );
+          if (result !== -1) return result;
         }
       }
     }
 
-    captures[groupNum - 1] = savedCapture;
+    captures.splice(0, captures.length, ...capturesBefore);
     return -1;
   }
 
