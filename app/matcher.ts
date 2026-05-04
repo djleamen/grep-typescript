@@ -13,9 +13,9 @@ import { parseExactQuantifier, parseAtLeastQuantifier, parseRangeQuantifier } fr
  * @returns True if the character matches the token, false otherwise.
  */
 export function matchToken(char: string, token: string): boolean {
-  if (token === '\\d') {
+  if (token === String.raw`\d`) {
     return char >= '0' && char <= '9';
-  } else if (token === '\\w') {
+  } else if (token === String.raw`\w`) {
     return (char >= 'a' && char <= 'z') ||
            (char >= 'A' && char <= 'Z') ||
            (char >= '0' && char <= '9') ||
@@ -146,7 +146,7 @@ export function matchTokensLengthHelper(
   }
 
   if (token.startsWith('(') && (token.endsWith(')*') || token.endsWith(')+') || token.endsWith(')?'))) {
-    const quantifier = token[token.length - 1];
+    const quantifier = token.at(-1);
     const innerContent = token.slice(1, -2);
 
     if (quantifier === '+') {
@@ -346,8 +346,8 @@ export function matchTokensLengthHelper(
     );
   } else {
     // Handle backreferences \1-\9
-    if (token.length === 2 && token[0] === '\\' && token[1] >= '1' && token[1] <= '9') {
-      const groupNum = parseInt(token[1], 10);
+    if (token.length === 2 && token.startsWith('\\') && token[1] >= '1' && token[1] <= '9') {
+      const groupNum = Number.parseInt(token[1], 10);
       const capturedText = captures[groupNum - 1];
       if (capturedText === undefined) return -1;
       if (input.slice(inputPos, inputPos + capturedText.length) !== capturedText) return -1;
