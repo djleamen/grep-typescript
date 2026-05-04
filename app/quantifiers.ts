@@ -9,9 +9,9 @@
  * @returns An object containing the base token and the exact number of repetitions if an exact quantifier is found, or null if not found.
  */
 export function parseExactQuantifier(token: string): { base: string; n: number } | null {
-  const match = token.match(/^(.*)\{(\d+)\}$/);
+  const match = /^(.*)\{(\d+)\}$/.exec(token);
   if (match) {
-    return { base: match[1], n: parseInt(match[2], 10) };
+    return { base: match[1], n: Number.parseInt(match[2], 10) };
   }
   return null;
 }
@@ -23,9 +23,9 @@ export function parseExactQuantifier(token: string): { base: string; n: number }
  * @returns An object containing the base token and the minimum number of repetitions if an at-least quantifier is found, or null if not found.
  */
 export function parseAtLeastQuantifier(token: string): { base: string; n: number } | null {
-  const match = token.match(/^(.*)\{(\d+),\}$/);
+  const match = /^(.*)\{(\d+),\}$/.exec(token);
   if (match) {
-    return { base: match[1], n: parseInt(match[2], 10) };
+    return { base: match[1], n: Number.parseInt(match[2], 10) };
   }
   return null;
 }
@@ -37,9 +37,9 @@ export function parseAtLeastQuantifier(token: string): { base: string; n: number
  * @returns An object containing the base token and the minimum and maximum number of repetitions if a range quantifier is found, or null if not found.
  */
 export function parseRangeQuantifier(token: string): { base: string; n: number; m: number } | null {
-  const match = token.match(/^(.*)\{(\d+),(\d+)\}$/);
+  const match = /^(.*)\{(\d+),(\d+)\}$/.exec(token);
   if (match) {
-    return { base: match[1], n: parseInt(match[2], 10), m: parseInt(match[3], 10) };
+    return { base: match[1], n: Number.parseInt(match[2], 10), m: Number.parseInt(match[3], 10) };
   }
   return null;
 }
