@@ -393,9 +393,9 @@ export function matchTokensLengthHelper(
   const rangeQLH = parseRangeQuantifier(token);
   if (rangeQLH !== null) return matchRangeQuantifierToken(p, rangeQLH.base, rangeQLH.n, rangeQLH.m);
 
-  if (token.endsWith('+') && !token.startsWith('(')) return matchPlusToken(p);
-  if (token.endsWith('*') && !token.startsWith('(')) return matchStarToken(p);
-  if (token.endsWith('?') && !token.startsWith('(')) return matchOptionalToken(p);
+  if (token.endsWith('+')) return matchPlusToken(p);
+  if (token.endsWith('*')) return matchStarToken(p);
+  if (token.endsWith('?')) return matchOptionalToken(p);
 
   return matchBackrefOrLiteral(p);
 }
