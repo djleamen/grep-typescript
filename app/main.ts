@@ -66,7 +66,7 @@ let anyMatch = false;
 for (const source of inputSources) {
   const lines = source.content.split("\n");
   // Remove trailing empty string caused by a trailing newline
-  if (lines.length > 0 && lines[lines.length - 1] === "") {
+  if (lines.length > 0 && lines.at(-1) === "") {
     lines.pop();
   }
 
@@ -79,12 +79,10 @@ for (const source of inputSources) {
         process.stdout.write(linePrefix + matchedText + "\n");
         anyMatch = true;
       }
-    } else {
-      if (matchPattern(line, pattern)) {
-        const outputLine = shouldColorize ? highlightAllMatches(line, pattern) : line;
-        process.stdout.write(linePrefix + outputLine + "\n");
-        anyMatch = true;
-      }
+    } else if (matchPattern(line, pattern)) {
+      const outputLine = shouldColorize ? highlightAllMatches(line, pattern) : line;
+      process.stdout.write(linePrefix + outputLine + "\n");
+      anyMatch = true;
     }
   }
 }
