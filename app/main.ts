@@ -65,7 +65,6 @@ const inputSources: InputSource[] = hasFileInput
 let anyMatch = false;
 for (const source of inputSources) {
   const lines = source.content.split("\n");
-  // Remove trailing empty string caused by a trailing newline
   if (lines.length > 0 && lines.at(-1) === "") {
     lines.pop();
   }

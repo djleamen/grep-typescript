@@ -2,6 +2,12 @@
  * Pattern tokenizer — splits a regex-like pattern string into tokens.
  */
 
+/**
+ * Parse a character class token starting at the opening `[` at position i.
+ * @param pattern The full pattern string.
+ * @param i The index of the opening `[`.
+ * @returns A tuple of [token, nextIndex] where token is the full `[...]` string, or the bare `[` if no closing `]` is found.
+ */
 function parseCharClass(pattern: string, i: number): [string, number] {
   const end = pattern.indexOf(']', i);
   if (end === -1) {
@@ -10,6 +16,12 @@ function parseCharClass(pattern: string, i: number): [string, number] {
   return [pattern.slice(i, end + 1), end + 1];
 }
 
+/**
+ * Parse a balanced parenthesised group starting at the opening `(` at position i.
+ * @param pattern The full pattern string.
+ * @param i The index of the opening `(`.
+ * @returns A tuple of [token, nextIndex] for the full group, or the bare `(` if no closing `)` is found.
+ */
 function parseGroup(pattern: string, i: number): [string, number] {
   let depth = 1;
   let end = i + 1;
@@ -24,6 +36,13 @@ function parseGroup(pattern: string, i: number): [string, number] {
   return [pattern[i], i + 1];
 }
 
+/**
+ * Extract the next raw token (without quantifier suffix) starting at position i.
+ * Handles two-character escape sequences, character classes, groups, and bare characters.
+ * @param pattern The full pattern string.
+ * @param i The current position in the pattern.
+ * @returns A tuple of [token, nextIndex].
+ */
 function parseNextToken(pattern: string, i: number): [string, number] {
   if (pattern[i] === '\\' && i + 1 < pattern.length) {
     return [pattern.slice(i, i + 2), i + 2];
@@ -33,10 +52,22 @@ function parseNextToken(pattern: string, i: number): [string, number] {
   return [pattern[i], i + 1];
 }
 
+/**
+ * Return true if the string represents a valid brace quantifier body (e.g. `3`, `2,`, `1,4`).
+ * @param inner The content between `{` and `}`.
+ * @returns True if inner matches `\d+(,\d*)?`.
+ */
 function isValidBraceQuantifier(inner: string): boolean {
   return /^\d+(,\d*)?$/.test(inner);
 }
 
+/**
+ * Attempt to append a `{n}`, `{n,}`, or `{n,m}` quantifier suffix to a token starting at position i.
+ * @param pattern The full pattern string.
+ * @param i The index of the `{` character.
+ * @param token The token accumulated so far.
+ * @returns A tuple of [extendedToken, nextIndex] if a valid brace quantifier follows, otherwise [token, i].
+ */
 function appendBraceQuantifier(pattern: string, i: number, token: string): [string, number] {
   const closeBrace = pattern.indexOf('}', i);
   if (closeBrace !== -1) {
@@ -48,6 +79,13 @@ function appendBraceQuantifier(pattern: string, i: number, token: string): [stri
   return [token, i];
 }
 
+/**
+ * Attempt to append a `*`, `+`, `?`, or brace quantifier suffix to a raw token.
+ * @param pattern The full pattern string.
+ * @param i The index immediately after the raw token.
+ * @param token The raw token to extend.
+ * @returns A tuple of [extendedToken, nextIndex].
+ */
 function appendQuantifierSuffix(pattern: string, i: number, token: string): [string, number] {
   if (i < pattern.length && ['*', '+', '?'].includes(pattern[i])) {
     return [token + pattern[i], i + 1];

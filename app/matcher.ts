@@ -68,6 +68,11 @@ function tryMatchGroupAtPos(input: string, innerContent: string, inputPos: numbe
 }
 
 /**
+ * Captures and group-offset context passed through recursive matching calls.
+ */
+type MatchContext = { captures: (string | undefined)[]; groupOffset: number };
+
+/**
  * Check if an alternative matches starting at the given position.
  * Returns the number of characters consumed, or -1 if no match.
  * @param input The input string to match against.
@@ -77,14 +82,13 @@ function tryMatchGroupAtPos(input: string, innerContent: string, inputPos: numbe
  * @param captures The array to store captured substrings.
  * @returns The number of characters consumed if a match is found, or -1 if no match is found.
  */
-/** Captures and group-offset context bundled for passing through the recursive call. */
-type MatchContext = { captures: (string | undefined)[]; groupOffset: number };
-
 function matchAlternative(input: string, altTokens: string[], startPos: number, groupOffset: number = 0, captures: (string | undefined)[] = []): number {
   return matchTokensLengthHelper(input, altTokens, 0, startPos, startPos, false, { captures, groupOffset });
 }
 
-/** Shared parameters for recursive token-matching helpers. */
+/**
+ * Shared parameters for recursive token-matching helpers, bundled to avoid wide function signatures.
+ */
 type MatchParams = {
   input: string;
   tokens: string[];
@@ -96,7 +100,13 @@ type MatchParams = {
   groupOffset: number;
 };
 
-/** Invoke the next-token continuation from a token handler. */
+/**
+ * Invoke the next-token continuation from within a token handler.
+ * @param p The current match parameters.
+ * @param nextTokenIdx The index of the next token to match.
+ * @param nextInputPos The position in the input after consuming the current token.
+ * @returns The number of characters consumed if the remaining tokens match, or -1 otherwise.
+ */
 function recurse(p: MatchParams, nextTokenIdx: number, nextInputPos: number): number {
   return matchTokensLengthHelper(
     p.input, p.tokens, nextTokenIdx, nextInputPos,
@@ -104,6 +114,15 @@ function recurse(p: MatchParams, nextTokenIdx: number, nextInputPos: number): nu
   );
 }
 
+/**
+ * Attempt to match a single capturing-group alternative using greedy backtracking.
+ * Tries all possible end positions from longest to shortest, recording the capture on success.
+ * @param p The current match parameters.
+ * @param altTokens Tokens for the alternative branch to attempt.
+ * @param groupNum The 1-based capturing group number for this match.
+ * @param capturesBefore Snapshot of captures before this attempt, used to restore on failure.
+ * @returns The total characters consumed from startPos if the full match succeeds, or -1 otherwise.
+ */
 function tryMatchCapturingAlternative(
   p: MatchParams, altTokens: string[], groupNum: number, capturesBefore: (string | undefined)[],
 ): number {
@@ -122,6 +141,12 @@ function tryMatchCapturingAlternative(
   return -1;
 }
 
+/**
+ * Match a capturing group token against the input, trying each alternative in order.
+ * Restores the captures array if no alternative succeeds.
+ * @param p The current match parameters whose current token is a capturing group.
+ * @returns The total characters consumed from startPos if any alternative matches, or -1 otherwise.
+ */
 function matchCapturingGroupToken(p: MatchParams): number {
   const token = p.tokens[p.tokenIdx];
   const innerContent = token.slice(1, -1);
@@ -140,6 +165,12 @@ function matchCapturingGroupToken(p: MatchParams): number {
   return -1;
 }
 
+/**
+ * Match a group with a `+` quantifier (one or more repetitions) using greedy backtracking.
+ * @param p The current match parameters.
+ * @param innerContent The content inside the group parentheses.
+ * @returns The total characters consumed from startPos if at least one repetition matches, or -1 otherwise.
+ */
 function matchGroupPlusQuantifier(p: MatchParams, innerContent: string): number {
   const positions: number[] = [];
   let pos = p.inputPos;
@@ -157,6 +188,12 @@ function matchGroupPlusQuantifier(p: MatchParams, innerContent: string): number 
   return -1;
 }
 
+/**
+ * Match a group with a `*` quantifier (zero or more repetitions) using greedy backtracking.
+ * @param p The current match parameters.
+ * @param innerContent The content inside the group parentheses.
+ * @returns The total characters consumed from startPos, or -1 if no continuation matches.
+ */
 function matchGroupStarQuantifier(p: MatchParams, innerContent: string): number {
   const positions: number[] = [p.inputPos];
   let pos = p.inputPos;
@@ -173,6 +210,12 @@ function matchGroupStarQuantifier(p: MatchParams, innerContent: string): number 
   return -1;
 }
 
+/**
+ * Match a group with a `?` quantifier (zero or one repetition), preferring one match first.
+ * @param p The current match parameters.
+ * @param innerContent The content inside the group parentheses.
+ * @returns The total characters consumed from startPos, or -1 if neither branch matches.
+ */
 function matchGroupOptionalQuantifier(p: MatchParams, innerContent: string): number {
   const consumed = tryMatchGroupAtPos(p.input, innerContent, p.inputPos);
   if (consumed > 0) {
@@ -182,6 +225,11 @@ function matchGroupOptionalQuantifier(p: MatchParams, innerContent: string): num
   return recurse(p, p.tokenIdx + 1, p.inputPos);
 }
 
+/**
+ * Dispatch to the appropriate group quantifier handler based on the trailing quantifier character.
+ * @param p The current match parameters whose current token is a group followed by `*`, `+`, or `?`.
+ * @returns The total characters consumed from startPos, or -1 if no match.
+ */
 function matchGroupWithQuantifierToken(p: MatchParams): number {
   const token = p.tokens[p.tokenIdx];
   const quantifier = token.at(-1)!;
@@ -191,6 +239,14 @@ function matchGroupWithQuantifierToken(p: MatchParams): number {
   return matchGroupOptionalQuantifier(p, innerContent);
 }
 
+/**
+ * Match a token with an exact `{n}` quantifier, consuming exactly n repetitions.
+ * Handles both group tokens and single-character tokens.
+ * @param p The current match parameters.
+ * @param base The base token (character or group) to repeat.
+ * @param n The exact number of repetitions required.
+ * @returns The total characters consumed from startPos if exactly n repetitions match, or -1 otherwise.
+ */
 function matchExactQuantifierToken(p: MatchParams, base: string, n: number): number {
   if (base.startsWith('(') && base.endsWith(')')) {
     const innerContent = base.slice(1, -1);
@@ -210,6 +266,13 @@ function matchExactQuantifierToken(p: MatchParams, base: string, n: number): num
   return recurse(p, p.tokenIdx + 1, pos);
 }
 
+/**
+ * Match a group with an `{n,}` quantifier (at least n repetitions) using greedy backtracking.
+ * @param p The current match parameters.
+ * @param innerContent The content inside the group parentheses.
+ * @param n The minimum number of repetitions required.
+ * @returns The total characters consumed from startPos, or -1 if fewer than n repetitions match.
+ */
 function matchAtLeastGroupQuantifier(p: MatchParams, innerContent: string, n: number): number {
   let pos = p.inputPos;
   for (let k = 0; k < n; k++) {
@@ -231,6 +294,14 @@ function matchAtLeastGroupQuantifier(p: MatchParams, innerContent: string, n: nu
   return -1;
 }
 
+/**
+ * Match a token with an `{n,}` quantifier (at least n repetitions) using greedy backtracking.
+ * Handles both group tokens and single-character tokens.
+ * @param p The current match parameters.
+ * @param base The base token to repeat.
+ * @param n The minimum number of repetitions required.
+ * @returns The total characters consumed from startPos, or -1 if fewer than n repetitions match.
+ */
 function matchAtLeastQuantifierToken(p: MatchParams, base: string, n: number): number {
   if (base.startsWith('(') && base.endsWith(')')) {
     return matchAtLeastGroupQuantifier(p, base.slice(1, -1), n);
@@ -248,6 +319,14 @@ function matchAtLeastQuantifierToken(p: MatchParams, base: string, n: number): n
   return -1;
 }
 
+/**
+ * Match a group with an `{n,m}` quantifier (between n and m repetitions) using greedy backtracking.
+ * @param p The current match parameters.
+ * @param innerContent The content inside the group parentheses.
+ * @param n The minimum number of repetitions.
+ * @param m The maximum number of repetitions.
+ * @returns The total characters consumed from startPos, or -1 if fewer than n repetitions match.
+ */
 function matchRangeGroupQuantifier(p: MatchParams, innerContent: string, n: number, m: number): number {
   let pos = p.inputPos;
   for (let k = 0; k < n; k++) {
@@ -269,6 +348,15 @@ function matchRangeGroupQuantifier(p: MatchParams, innerContent: string, n: numb
   return -1;
 }
 
+/**
+ * Match a token with an `{n,m}` quantifier (between n and m repetitions) using greedy backtracking.
+ * Handles both group tokens and single-character tokens.
+ * @param p The current match parameters.
+ * @param base The base token to repeat.
+ * @param n The minimum number of repetitions.
+ * @param m The maximum number of repetitions.
+ * @returns The total characters consumed from startPos, or -1 if fewer than n repetitions match.
+ */
 function matchRangeQuantifierToken(p: MatchParams, base: string, n: number, m: number): number {
   if (base.startsWith('(') && base.endsWith(')')) {
     return matchRangeGroupQuantifier(p, base.slice(1, -1), n, m);
@@ -289,6 +377,11 @@ function matchRangeQuantifierToken(p: MatchParams, base: string, n: number, m: n
   return -1;
 }
 
+/**
+ * Match a simple (non-group) token with a `+` quantifier (one or more) using greedy backtracking.
+ * @param p The current match parameters whose current token ends with `+`.
+ * @returns The total characters consumed from startPos, or -1 if no match.
+ */
 function matchPlusToken(p: MatchParams): number {
   const baseToken = p.tokens[p.tokenIdx].slice(0, -1);
   let matchCount = 0;
@@ -303,6 +396,11 @@ function matchPlusToken(p: MatchParams): number {
   return -1;
 }
 
+/**
+ * Match a simple (non-group) token with a `*` quantifier (zero or more) using greedy backtracking.
+ * @param p The current match parameters whose current token ends with `*`.
+ * @returns The total characters consumed from startPos, or -1 if no continuation matches.
+ */
 function matchStarToken(p: MatchParams): number {
   const baseToken = p.tokens[p.tokenIdx].slice(0, -1);
   let matchCount = 0;
@@ -316,6 +414,11 @@ function matchStarToken(p: MatchParams): number {
   return -1;
 }
 
+/**
+ * Match a simple (non-group) token with a `?` quantifier (zero or one), preferring one match first.
+ * @param p The current match parameters whose current token ends with `?`.
+ * @returns The total characters consumed from startPos, or -1 if neither branch matches.
+ */
 function matchOptionalToken(p: MatchParams): number {
   const baseToken = p.tokens[p.tokenIdx].slice(0, -1);
   if (p.inputPos < p.input.length && matchToken(p.input[p.inputPos], baseToken)) {
@@ -325,9 +428,13 @@ function matchOptionalToken(p: MatchParams): number {
   return recurse(p, p.tokenIdx + 1, p.inputPos);
 }
 
+/**
+ * Match a backreference (`\1`–`\9`) or a literal character token at the current input position.
+ * @param p The current match parameters.
+ * @returns The total characters consumed from startPos, or -1 if no match.
+ */
 function matchBackrefOrLiteral(p: MatchParams): number {
   const token = p.tokens[p.tokenIdx];
-  // Handle backreferences \1-\9
   if (token.length === 2 && token.startsWith('\\') && token[1] >= '1' && token[1] <= '9') {
     const groupNum = Number.parseInt(token[1], 10);
     const capturedText = p.captures[groupNum - 1];
@@ -340,26 +447,34 @@ function matchBackrefOrLiteral(p: MatchParams): number {
   return recurse(p, p.tokenIdx + 1, p.inputPos + 1);
 }
 
+/**
+ * Return true if the token represents a complete capturing group (e.g. `(abc)`).
+ * @param token The token string to test.
+ * @returns True if the token starts with `(` and ends with `)`.
+ */
 function isCapturingGroup(token: string): boolean {
   return token.startsWith('(') && token.endsWith(')');
 }
 
+/**
+ * Return true if the token is a group immediately followed by a `*`, `+`, or `?` quantifier.
+ * @param token The token string to test.
+ * @returns True if the token starts with `(` and ends with `*`, `+`, or `?`.
+ */
 function isGroupWithQuantifier(token: string): boolean {
   return token.startsWith('(') && ['*', '+', '?'].includes(token.at(-1)!);
 }
 
 /**
- * Helper function to recursively match tokens and return consumed length.
- * Returns the number of characters consumed if the tokens match, or -1 if they do not match.
+ * Core recursive token matcher. Attempts to match tokens[tokenIdx..] against input starting at inputPos.
  * @param input The input string to match against.
- * @param tokens The array of tokens to match.
- * @param tokenIdx The current index in the tokens array.
+ * @param tokens The tokenized pattern array.
+ * @param tokenIdx The index of the current token to match.
  * @param inputPos The current position in the input string.
- * @param startPos The starting position of the match attempt (used for calculating consumed length).
- * @param mustEndAtInputEnd Whether the match must end at the end of the input string.
- * @param captures The array to store captured substrings, indexed by group number.
- * @param groupOffset The offset to apply to group numbers for captures within this context.
- * @returns The number of characters consumed if the tokens match, or -1 if they do not match.
+ * @param startPos The position where this match attempt began (used to compute consumed length).
+ * @param mustEndAtInputEnd Whether the match must consume the entire remaining input.
+ * @param ctx Optional captures and group-offset context; defaults to empty captures and zero offset.
+ * @returns The number of characters consumed from startPos if all tokens match, or -1 on failure.
  */
 export function matchTokensLengthHelper(
   input: string,
@@ -449,11 +564,11 @@ export function matchTokensAtEnd(input: string, tokens: string[], startPos: numb
 }
 
 /**
- * Match the input line against the pattern, considering ^ and $ anchors.
- * Returns true if the pattern matches the input line, false otherwise.
- * @param inputLine The line of input to match.
- * @param pattern The pattern to match, which may include ^ and $ anchors.
- * @returns True if the pattern matches the input line, false otherwise.
+ * Scan the entire input line for a match using the given per-position match function.
+ * @param inputLine The line of input to scan.
+ * @param tokens The tokenized pattern to match against.
+ * @param matchFn A predicate that returns true if the tokens match at a given position.
+ * @returns True if any position in the line satisfies matchFn, false otherwise.
  */
 function scanForMatch(
   inputLine: string, tokens: string[], matchFn: (input: string, tokens: string[], pos: number) => boolean,
@@ -464,6 +579,12 @@ function scanForMatch(
   return false;
 }
 
+/**
+ * Match an entire input line against a pattern string, respecting `^` and `$` anchors.
+ * @param inputLine The line of input to test.
+ * @param pattern The pattern string, optionally prefixed with `^` or suffixed with `$`.
+ * @returns True if the pattern matches anywhere in the input line (or fully, if anchored).
+ */
 export function matchPattern(inputLine: string, pattern: string): boolean {
   const hasStartAnchor = pattern.startsWith('^');
   const hasEndAnchor = pattern.endsWith('$');

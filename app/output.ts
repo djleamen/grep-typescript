@@ -8,6 +8,14 @@ import { matchTokensLengthAt, matchTokensLengthAtEnd } from "./matcher.ts";
 export const ANSI_COLOR_OPEN = "\x1b[01;31m";
 export const ANSI_COLOR_CLOSE = "\x1b[m";
 
+/**
+ * Scan a line for the first match of tokens at or after searchFrom.
+ * @param inputLine The line of input to scan.
+ * @param tokens The tokenized pattern to match.
+ * @param searchFrom The index to start scanning from.
+ * @param matchFn A function that returns the match length at a given position, or -1 for no match.
+ * @returns The start index and length of the first match found, or null if none.
+ */
 function searchLine(
   inputLine: string,
   tokens: string[],
