@@ -370,7 +370,7 @@ export function matchTokensLengthHelper(
   mustEndAtInputEnd: boolean,
   ctx?: MatchContext,
 ): number {
-  if (!ctx) ctx = { captures: [], groupOffset: 0 };
+  ctx ??= { captures: [], groupOffset: 0 };
   const { captures, groupOffset } = ctx;
   if (tokenIdx >= tokens.length) {
     if (mustEndAtInputEnd && inputPos !== input.length) return -1;
