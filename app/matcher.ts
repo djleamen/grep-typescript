@@ -340,6 +340,14 @@ function matchBackrefOrLiteral(p: MatchParams): number {
   return recurse(p, p.tokenIdx + 1, p.inputPos + 1);
 }
 
+function isCapturingGroup(token: string): boolean {
+  return token.startsWith('(') && token.endsWith(')');
+}
+
+function isGroupWithQuantifier(token: string): boolean {
+  return token.startsWith('(') && ['*', '+', '?'].includes(token.at(-1)!);
+}
+
 /**
  * Helper function to recursively match tokens and return consumed length.
  * Returns the number of characters consumed if the tokens match, or -1 if they do not match.
@@ -360,8 +368,9 @@ export function matchTokensLengthHelper(
   inputPos: number,
   startPos: number,
   mustEndAtInputEnd: boolean,
-  ctx: MatchContext = { captures: [], groupOffset: 0 },
+  ctx?: MatchContext,
 ): number {
+  if (!ctx) ctx = { captures: [], groupOffset: 0 };
   const { captures, groupOffset } = ctx;
   if (tokenIdx >= tokens.length) {
     if (mustEndAtInputEnd && inputPos !== input.length) return -1;
@@ -372,8 +381,8 @@ export function matchTokensLengthHelper(
   const p: MatchParams = { input, tokens, tokenIdx, inputPos, startPos, mustEndAtInputEnd, captures, groupOffset };
 
 
-  if (token.startsWith('(') && token.endsWith(')')) return matchCapturingGroupToken(p);
-  if (token.startsWith('(') && (token.endsWith(')*') || token.endsWith(')+') || token.endsWith(')?'))) return matchGroupWithQuantifierToken(p);
+  if (isCapturingGroup(token)) return matchCapturingGroupToken(p);
+  if (isGroupWithQuantifier(token)) return matchGroupWithQuantifierToken(p);
 
   const exactQLH = parseExactQuantifier(token);
   if (exactQLH !== null) return matchExactQuantifierToken(p, exactQLH.base, exactQLH.n);
