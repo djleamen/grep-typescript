@@ -8,6 +8,21 @@ import { matchTokensLengthAt, matchTokensLengthAtEnd } from "./matcher.ts";
 export const ANSI_COLOR_OPEN = "\x1b[01;31m";
 export const ANSI_COLOR_CLOSE = "\x1b[m";
 
+function searchLine(
+  inputLine: string,
+  tokens: string[],
+  searchFrom: number,
+  matchFn: (input: string, tokens: string[], pos: number) => number,
+): { start: number; length: number } | null {
+  for (let i = searchFrom; i < inputLine.length; i++) {
+    const matchLength = matchFn(inputLine, tokens, i);
+    if (matchLength !== -1) {
+      return { start: i, length: matchLength };
+    }
+  }
+  return null;
+}
+
 /**
  * Find the next matching text in an input line, starting from a given index.
  * @param inputLine The line of input to search.
@@ -20,55 +35,20 @@ export function findNextMatch(inputLine: string, pattern: string, searchFrom: nu
   const hasEndAnchor = pattern.endsWith('$');
 
   let cleanPattern = pattern;
-  if (hasStartAnchor) {
-    cleanPattern = cleanPattern.slice(1);
-  }
-  if (hasEndAnchor) {
-    cleanPattern = cleanPattern.slice(0, -1);
-  }
+  if (hasStartAnchor) cleanPattern = cleanPattern.slice(1);
+  if (hasEndAnchor) cleanPattern = cleanPattern.slice(0, -1);
 
   const tokens = tokenizePattern(cleanPattern);
-
-  if (hasStartAnchor && hasEndAnchor) {
-    if (searchFrom > 0) {
-      return null;
-    }
-    const matchLength = matchTokensLengthAtEnd(inputLine, tokens, 0);
-    if (matchLength !== -1) {
-      return { start: 0, length: matchLength };
-    }
-    return null;
-  }
+  const matchFn = hasEndAnchor ? matchTokensLengthAtEnd : matchTokensLengthAt;
 
   if (hasStartAnchor) {
-    if (searchFrom > 0) {
-      return null;
-    }
-    const matchLength = matchTokensLengthAt(inputLine, tokens, 0);
-    if (matchLength !== -1) {
-      return { start: 0, length: matchLength };
-    }
+    if (searchFrom > 0) return null;
+    const len = matchFn(inputLine, tokens, 0);
+    if (len !== -1) return { start: 0, length: len };
     return null;
   }
 
-  if (hasEndAnchor) {
-    for (let i = searchFrom; i < inputLine.length; i++) {
-      const matchLength = matchTokensLengthAtEnd(inputLine, tokens, i);
-      if (matchLength !== -1) {
-        return { start: i, length: matchLength };
-      }
-    }
-    return null;
-  }
-
-  for (let i = searchFrom; i < inputLine.length; i++) {
-    const matchLength = matchTokensLengthAt(inputLine, tokens, i);
-    if (matchLength !== -1) {
-      return { start: i, length: matchLength };
-    }
-  }
-
-  return null;
+  return searchLine(inputLine, tokens, searchFrom, matchFn);
 }
 
 /**
