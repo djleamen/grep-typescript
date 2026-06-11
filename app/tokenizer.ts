@@ -114,7 +114,7 @@ export function tokenizePattern(pattern: string): string[] {
 }
 
 /**
- * Split a pattern by | operator, respecting nested groups.
+ * Split a pattern by | operator, respecting nested groups, character classes, and escapes.
  * @param pattern The pattern string to split into alternatives.
  * @returns An array of alternative pattern strings extracted from the input pattern.
  */
@@ -122,15 +122,28 @@ export function splitAlternatives(pattern: string): string[] {
   const alternatives: string[] = [];
   let current = '';
   let depth = 0;
-  
-  for (const char of pattern) {
-    if (char === '(') {
+  let inClass = false;
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === '\\' && i + 1 < pattern.length) {
+      current += char + pattern[i + 1];
+      i++;
+    } else if (char === '[' && !inClass && pattern.indexOf(']', i) !== -1) {
+      // Mirror parseCharClass: an unclosed `[` is a literal, not a class.
+      inClass = true;
+      current += char;
+    } else if (char === ']' && inClass) {
+      inClass = false;
+      current += char;
+    } else if (char === '(' && !inClass && hasBalancedClose(pattern, i)) {
+      // Mirror parseGroup: an unmatched `(` is a literal, not a group.
       depth++;
       current += char;
-    } else if (char === ')') {
+    } else if (char === ')' && !inClass && depth > 0) {
       depth--;
       current += char;
-    } else if (char === '|' && depth === 0) {
+    } else if (char === '|' && depth === 0 && !inClass) {
       alternatives.push(current);
       current = '';
     } else {
@@ -139,4 +152,21 @@ export function splitAlternatives(pattern: string): string[] {
   }
   alternatives.push(current);
   return alternatives;
+}
+
+/**
+ * Return true if the `(` at position i has a matching `)` later in the pattern.
+ * @param pattern The full pattern string.
+ * @param i The index of the opening `(`.
+ * @returns True when a balanced closing parenthesis exists.
+ */
+function hasBalancedClose(pattern: string, i: number): boolean {
+  let depth = 1;
+  let end = i + 1;
+  while (end < pattern.length && depth > 0) {
+    if (pattern[end] === '(') depth++;
+    else if (pattern[end] === ')') depth--;
+    end++;
+  }
+  return depth === 0;
 }
