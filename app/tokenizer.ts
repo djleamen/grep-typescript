@@ -114,7 +114,7 @@ export function tokenizePattern(pattern: string): string[] {
 }
 
 /**
- * Split a pattern by | operator, respecting nested groups.
+ * Split a pattern by | operator, respecting nested groups, character classes, and escapes.
  * @param pattern The pattern string to split into alternatives.
  * @returns An array of alternative pattern strings extracted from the input pattern.
  */
@@ -122,15 +122,26 @@ export function splitAlternatives(pattern: string): string[] {
   const alternatives: string[] = [];
   let current = '';
   let depth = 0;
-  
-  for (const char of pattern) {
-    if (char === '(') {
+  let inClass = false;
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === '\\' && i + 1 < pattern.length) {
+      current += char + pattern[i + 1];
+      i++;
+    } else if (char === '[' && !inClass) {
+      inClass = true;
+      current += char;
+    } else if (char === ']' && inClass) {
+      inClass = false;
+      current += char;
+    } else if (char === '(' && !inClass) {
       depth++;
       current += char;
-    } else if (char === ')') {
+    } else if (char === ')' && !inClass) {
       depth--;
       current += char;
-    } else if (char === '|' && depth === 0) {
+    } else if (char === '|' && depth === 0 && !inClass) {
       alternatives.push(current);
       current = '';
     } else {

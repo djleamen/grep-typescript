@@ -7,7 +7,7 @@ import { parseExactQuantifier, parseAtLeastQuantifier, parseRangeQuantifier } fr
 
 /**
  * Check if a single character matches a single token.
- * Supports \d, \w, ., character classes, and literal characters.
+ * Supports \d, \w, ., character classes, escaped literals, and literal characters.
  * @param char The character from the input string to match.
  * @param token The token string to match against, which can be a special token or a literal character.
  * @returns True if the character matches the token, false otherwise.
@@ -30,6 +30,8 @@ export function matchToken(char: string, token: string): boolean {
     } else {
       return innerPattern.includes(char);
     }
+  } else if (token.length === 2 && token.startsWith('\\')) {
+    return char === token[1];
   } else {
     return char === token;
   }
@@ -508,9 +510,12 @@ export function matchTokensLengthHelper(
   const rangeQLH = parseRangeQuantifier(token);
   if (rangeQLH !== null) return matchRangeQuantifierToken(p, rangeQLH.base, rangeQLH.n, rangeQLH.m);
 
-  if (token.endsWith('+')) return matchPlusToken(p);
-  if (token.endsWith('*')) return matchStarToken(p);
-  if (token.endsWith('?')) return matchOptionalToken(p);
+  const isEscapePair = token.length === 2 && token.startsWith('\\');
+  if (!isEscapePair) {
+    if (token.endsWith('+')) return matchPlusToken(p);
+    if (token.endsWith('*')) return matchStarToken(p);
+    if (token.endsWith('?')) return matchOptionalToken(p);
+  }
 
   return matchBackrefOrLiteral(p);
 }
@@ -581,11 +586,17 @@ function scanForMatch(
 
 /**
  * Match an entire input line against a pattern string, respecting `^` and `$` anchors.
+ * Top-level alternatives (e.g. `cat|dog`) are tried independently, each with its own anchors.
  * @param inputLine The line of input to test.
  * @param pattern The pattern string, optionally prefixed with `^` or suffixed with `$`.
  * @returns True if the pattern matches anywhere in the input line (or fully, if anchored).
  */
 export function matchPattern(inputLine: string, pattern: string): boolean {
+  const alternatives = splitAlternatives(pattern);
+  if (alternatives.length > 1) {
+    return alternatives.some((alternative) => matchPattern(inputLine, alternative));
+  }
+
   const hasStartAnchor = pattern.startsWith('^');
   const hasEndAnchor = pattern.endsWith('$');
   const cleanPattern = pattern.slice(hasStartAnchor ? 1 : 0, hasEndAnchor ? -1 : undefined);

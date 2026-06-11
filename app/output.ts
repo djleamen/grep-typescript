@@ -2,7 +2,7 @@
  * Output utilities — ANSI color constants and match-finding/highlighting functions.
  */
 
-import { tokenizePattern } from "./tokenizer.ts";
+import { tokenizePattern, splitAlternatives } from "./tokenizer.ts";
 import { matchTokensLengthAt, matchTokensLengthAtEnd } from "./matcher.ts";
 
 export const ANSI_COLOR_OPEN = "\x1b[01;31m";
@@ -33,12 +33,25 @@ function searchLine(
 
 /**
  * Find the next matching text in an input line, starting from a given index.
+ * Top-level alternatives are tried independently; the leftmost (then longest) match wins.
  * @param inputLine The line of input to search.
  * @param pattern The pattern to match.
  * @param searchFrom The index from which to start searching.
  * @returns The start index and length of the match, or null if no match.
  */
 export function findNextMatch(inputLine: string, pattern: string, searchFrom: number): { start: number; length: number } | null {
+  const alternatives = splitAlternatives(pattern);
+  if (alternatives.length > 1) {
+    let best: { start: number; length: number } | null = null;
+    for (const alternative of alternatives) {
+      const match = findNextMatch(inputLine, alternative, searchFrom);
+      if (match !== null && (best === null || match.start < best.start || (match.start === best.start && match.length > best.length))) {
+        best = match;
+      }
+    }
+    return best;
+  }
+
   const hasStartAnchor = pattern.startsWith('^');
   const hasEndAnchor = pattern.endsWith('$');
 
